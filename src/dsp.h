@@ -185,6 +185,7 @@ struct Synth {
   Synth() {
     for (int i = 0; i <= 1024; i++) SINT[i] = sinf(2 * PI_F * i / 1024);
     memcpy(baseS, pt.p, sizeof baseS);
+    for (int k = 0; k < NSLOT; k++) route[k] = pt.mod[k], routeD[k] = pt.mod[k].depth;
     // Wavetable frames, dark to bright: sine, warm, triangle, saw, square, "ah", nasal, glass.
     for (int f = 0; f < WT_F; f++) {
       float t[WT_N] = {}, peak = 0;
@@ -210,6 +211,8 @@ struct Synth {
 
  private:
   float ph[24] = {}, pwmPh[6] = {}, mph[3] = {}, partAmp[16] = {}, fz1[3] = {}, fz2[3] = {}, shep = 0;
+  Slot route[NSLOT];    // the routings as currently applied: glide toward pt.mod
+  float routeD[NSLOT];  // their depths, gliding
   float baseS[NPARAM], modS[NSRC] = {}, lfoPh = 0, lfoA = 0, lfoB = 0, semis = 0, fade = 0, cut = 1000, ic1 = 0, ic2 = 0;
   int engine = -1, curVoices = 3;
   uint8_t fxOn = 0;
@@ -279,8 +282,16 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
   float glide = n / (mp.modTau * SR), lfoGlide = fminf(n / (0.05f * SR), 1.f), pg = fminf(n / (PARAM_TAU * SR), 1.f);
   for (int s = 0; s < NSRC; s++) modS[s] += (src[s] - modS[s]) * (s == S_LFO ? lfoGlide : glide);
   for (int i = 0; i < NPARAM; i++) eff[i] = baseS[i] += (P.p[i] - baseS[i]) * pg;
-  for (const Slot& s : P.mod)
-    if (s.depth && s.src < NSRC && s.dst < NPARAM) eff[s.dst] += modS[s.src] * s.depth * 0.01f;
+  // The matrix glides too: depths ramp, and a slot re-routed to another source or
+  // param fades out on the old route before fading in on the new one.
+  for (int k = 0; k < NSLOT; k++) {
+    const Slot& s = P.mod[k];
+    Slot& r = route[k];
+    bool moved = s.src != r.src || s.dst != r.dst;
+    routeD[k] += ((moved ? 0 : s.depth) - routeD[k]) * pg;
+    if (moved && fabsf(routeD[k]) < 0.5f) r.src = s.src, r.dst = s.dst;
+    if (r.src < NSRC && r.dst < NPARAM) eff[r.dst] += modS[r.src] * routeD[k] * 0.01f;
+  }
   for (float& e : eff) e = clamp01(e);
 
   // Engine or voice-count swap: fade out, switch, fade back in (oscillators
@@ -452,7 +463,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
           ph[v] = wrap1(ph[v] + inc[v]);
           x += (v == 1 ? 0.25f : 0.4f) * sinT(ph[v] + idx[v] * sinT(mph[v]));
         }
-        x *= vg;
+        x *= 0.55f * vg;  // the bells peak ~2x their average as the detuned modulators drift
         break;
       case E_ORGAN:
         for (int j = 0; j < 16; j++)

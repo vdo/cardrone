@@ -378,7 +378,7 @@ static void drawMatrix() {
 static void drawHelp() {
   static const char* const K[][2] = {
       {"TAB", "next page"}, {"1-7", "drone engine"}, {"[ ]", "root note"}, {"9 0", "octave"},
-      {"k", "scale"},       {"r", "randomize"},      {"c", "calibrate room"}, {"s l", "save/load 1-8"},
+      {"k", "scale"},       {"r", "rnd; hold: mods"},      {"c", "calibrate room"}, {"s l", "save/load 1-8"},
       {"- =", "volume"},    {"`", "options+network"}, {";.", "up / down"}, {",/", "adjust"},
       {"ENT", "play/stop, edit"}, {"DEL", "clear mod slot"}, {"n", "voices 1-3"}, {"h", "this help"}};
   for (int i = 0; i < (int)(sizeof K / sizeof *K); i++) {
@@ -769,12 +769,30 @@ static void saveByte(const char* key, uint8_t v) {  // device settings in NVS
 }
 
 // New params in drone-friendly ranges; PITCH, NOISE and LEVEL stay put (lo < 0).
+static uint32_t rHeldAt = 0;  // when a press of r randomized the params; held 3 s rolls the mods too
+
 static void randomize() {
   static const float lo[NPARAM] = {-1, .25f, 0, 0, 0, -1, 0, -1, 0, 0, 0, .2f, .1f, .1f, .3f, 0};
   static const float hi[NPARAM] = {0, .7f, .6f, 1, .7f, 0, .6f, 0, .5f, .25f, .5f, .9f, .9f, .7f, .9f, .5f};
   for (int i = 0; i < NPARAM; i++)
     if (lo[i] >= 0) syn.pt.p[i] = lo[i] + (hi[i] - lo[i]) * (esp_random() >> 8) * (1 / 16777216.f);
-  say("RANDOMIZED");
+  rHeldAt = millis();
+  say("RANDOMIZED  hold 3s: mods too");
+}
+
+// Held r: new routings, depths and LFO shape. Drone-safe: no PITCH, LEVEL, NOISE
+// or CRUSH targets, depths of 10-40 (mostly positive), about a quarter of slots off.
+static void randomizeMods() {
+  static const uint8_t DST[] = {P_CUTOFF, P_RESO, P_TIMBRE, P_SPREAD, P_LFO,  P_DRIVE,
+                                P_RING,   P_CHORUS, P_DTIME, P_DFB,   P_REVERB, P_SHIMMER};
+  auto rnd = [](int n) { return (int)(esp_random() % n); };
+  for (Slot& s : syn.pt.mod) {
+    s.src = rnd(NSRC);
+    s.dst = DST[rnd(sizeof DST)];
+    s.depth = rnd(4) == 0 ? 0 : (rnd(4) == 0 ? -5 : 5) * (2 + rnd(7));
+  }
+  syn.pt.lfo = rnd(NLFO);
+  say("RANDOMIZED PARAMS + MODS");
 }
 
 static void startCalibration() {
@@ -875,7 +893,11 @@ static void serviceKeys() {
   if (kb.isChange()) {
     held = kb.isPressed() ? readKey() : 0;
     repeatAt = now + 350;
+    rHeldAt = 0;  // any key change ends an r hold; a press of r that randomizes restarts it
     if (held) onKey(held);
+  } else if (held == 'r' && rHeldAt && now - rHeldAt >= 3000) {
+    rHeldAt = 0;
+    randomizeMods();
   } else if (held && strchr(";.,/-=", held) && now >= repeatAt) {  // auto-repeat nav + volume
     repeatAt = now + 45;
     onKey(held);

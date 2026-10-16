@@ -67,6 +67,8 @@ means "motion opens the filter, by up to 35% of its range".
 - `,` `/` change whatever is highlighted. Depth goes from −100 to +100 in steps of 5. A negative depth works in reverse, so a rising source turns the param down.
 - **Del** sets the slot's depth to 0 (off)
 
+Routing changes glide: a new depth ramps in, and a slot moved to another source or param fades out and back in over about a second, so editing (or holding `r` to randomize the matrix) never jumps.
+
 Several slots can point at the same param; their amounts add up. A depth of 20–40 is plenty for most things. How quickly the room's changes reach the sound is set by **MOD PROFILE** in the options; with the default, SMOOTH, they glide over about 1.5 seconds, so even a strong depth swells rather than jumps.
 
 ## The mod sources: what the room is telling you
@@ -152,7 +154,7 @@ Changes glide over a fraction of a second, so turning a knob, loading a preset o
 | `[` `]` | root note down / up |
 | `9` `0` | octave down / up |
 | `k` | next scale: minor, major, dorian, phrygian, pentatonic, fifths, chromatic |
-| `r` | randomize params (pitch, noise and level stay put) |
+| `r` | randomize params (pitch, noise and level stay put); **hold 3 s** to also randomize the modulation: every slot's source, param and depth, plus the LFO shape |
 | `c` | calibrate the empty room (5 s countdown to leave, any key cancels) |
 | `s` then `1`–`8` | save a preset to the SD card |
 | `l` then `1`–`8` | load a preset from the SD card |

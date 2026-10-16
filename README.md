@@ -52,7 +52,7 @@ Nothing sounds until `Enter` (play). On the ADV, plugging headphones into the ja
 | `Tab` | page: Waterfall → Bars → Params → Matrix |
 | `1`–`7` | engine: PWM, SAW (supersaw), FM (bell), ORGAN (subcarrier additive), WAVE (wavetable), VOICE (formant choir), SHEP (endless Shepard drone) |
 | `n` | voices: 1 (root), 2 (+ fifth), 3 (+ sub); shown as bars in the engine tag |
-| `r` | randomize params in drone-friendly ranges (pitch, noise and level stay put) |
+| `r` | randomize params in drone-friendly ranges (pitch, noise and level stay put); hold 3 s to also randomize the mod matrix (sources, destinations, depths) and the LFO shape |
 | `[` `]` | root note down / up |
 | `9` `0` | octave down / up |
 | `k` | cycle scale (CSI pitch drift is quantised to it) |

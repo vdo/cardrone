@@ -95,6 +95,23 @@ int main(int argc, char** argv) {
     assert(fabsf(c.fast[DC_L] - c.fast[DC_L - 1]) < 1e-3f && fabsf(c.fast[DC_R] - c.fast[DC_R + 1]) < 1e-3f);
   }
 
+  // Re-routing a slot glides: cutoff lets go gradually, then the reverb takes the slot over.
+  {
+    syn.pt = DEFAULT_PATCH;
+    for (auto& s : syn.pt.mod) s.depth = 0;
+    syn.pt.mod[0] = {S_MOT, P_CUTOFF, 40};
+    float src1[NSRC] = {}, flat[NSC];
+    src1[S_MOT] = 1;
+    for (float& f : flat) f = 0.5f;
+    for (int i = 0; i < 600; i++) syn.render(pcm, 512, src1, flat);
+    float before = syn.eff[P_CUTOFF];
+    syn.pt.mod[0].dst = P_REVERB;
+    syn.render(pcm, 512, src1, flat);
+    assert(before > 0.8f && syn.eff[P_CUTOFF] > before - 0.05f);  // no jump
+    for (int i = 0; i < 300; i++) syn.render(pcm, 512, src1, flat);
+    assert(fabsf(syn.eff[P_CUTOFF] - 0.45f) < 0.02f && syn.eff[P_REVERB] > 0.95f);  // fully moved
+  }
+
   // REVERB and SHIMMER maxed on a held drone: the shimmer loop must bloom, not run away and pin.
   {
     syn.pt = DEFAULT_PATCH;
@@ -112,7 +129,8 @@ int main(int argc, char** argv) {
     assert(pinned < SR * 10 / 100);
   }
 
-  // Every engine at 1, 2 and 3 voices: audible, and the level roughly holds as voices drop.
+  // Every engine at 1, 2 and 3 voices: audible, not crushed into the clipper (4 s average:
+  // FM's level swings slowly as its detuned modulators drift).
   for (int e = 0; e < NENGINE; e++) {
     printf("%-6s voices", ENGINE_NAME[e]);
     for (int v = 1; v <= 3; v++) {
@@ -121,13 +139,14 @@ int main(int argc, char** argv) {
       float src0[NSRC] = {}, flat[NSC];
       for (float& f : flat) f = 0.5f;
       double sq = 0;
-      for (int i = 0; i < SR * 3; i += 512) {
+      long cnt = 0;
+      for (int i = 0; i < SR * 6; i += 512) {
         syn.render(pcm, 512, src0, flat);
-        if (i >= SR * 2) for (int j = 0; j < 512; j++) sq += (double)pcm[j] * pcm[j];
+        if (i >= SR * 2) for (int j = 0; j < 512; j++, cnt++) sq += (double)pcm[j] * pcm[j];
       }
-      float rms = sqrtf(sq / (SR - SR % 512)) / 32767;
+      float rms = sqrtf(sq / cnt) / 32767;
       printf("  %d: rms %.3f", v, rms);
-      assert(rms > 0.03f && rms < 0.7f);
+      assert(rms > 0.03f && rms < 0.5f);
     }
     puts("");
   }
