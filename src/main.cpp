@@ -184,7 +184,7 @@ static void backdrop() {
 static void bootAnimation(const char* crash) {
   static const char sub[] = "the room plays the drone";
   constexpr int len = sizeof sub - 1, cy = H / 2;
-  for (uint32_t t0 = millis(), t = 0; t < 1700; t = millis() - t0) {
+  for (uint32_t t0 = millis(), t = 0; t < 3200; t = millis() - t0) {  // typing ends ~1.6 s, then 1.5 s to read
     cv.fillSprite(C_BG);
     if (t < 180) {  // power-on: a line stretches out from the center...
       int w = W * t / 180;
