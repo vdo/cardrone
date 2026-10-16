@@ -175,6 +175,49 @@ static void backdrop() {
   for (int y = 0; y < H; y += 2) cv.drawFastHLine(0, y, W, C_SCAN);  // CRT scanlines
 }
 
+// Boot: a CRT warming up, then the title over a rippling subcarrier skyline.
+static void bootAnimation(const char* crash) {
+  static const char sub[] = "the room plays the drone";
+  constexpr int len = sizeof sub - 1, cy = H / 2;
+  for (uint32_t t0 = millis(), t = 0; t < 1700; t = millis() - t0) {
+    cv.fillSprite(C_BG);
+    if (t < 180) {  // power-on: a line stretches out from the center...
+      int w = W * t / 180;
+      cv.fillRect((W - w) / 2, cy - 1, w, 2, C_HOT);
+    } else if (t < 360) {  // ...and opens into the raster
+      int h = 2 + (H - 2) * (t - 180) / 180;
+      for (int y = cy - h / 2; y < cy + h / 2; y += 2) cv.drawFastHLine(0, y, W, C_SCAN);
+      cv.drawFastHLine(0, cy - h / 2, W, C_HI);
+      cv.drawFastHLine(0, cy + h / 2, W, C_HI);
+    } else {
+      backdrop();
+      float grow = fminf((t - 360) / 500.f, 1);
+      for (int i = 0; i < NSC; i++) {
+        float v = 0.55f + 0.25f * sinf(i * 0.31f + t * 0.005f) + 0.2f * sinf(i * 0.83f - t * 0.0035f);
+        int h = 1 + (int)(v * grow * 24);
+        cv.fillRect(16 + i * 4, 126 - h, 3, h, ramp[4 + (int)(v * 27)]);
+      }
+      cv.setTextSize(3);
+      cv.setTextColor(ramp[constrain((int)t - 450, 0, 416) / 16]);  // fades up the phosphor ramp
+      cv.drawCenterString("CARDRONE", W / 2, 38);
+      cv.setTextSize(1);
+      int n = constrain((int)t - 900, 0, len * 30) / 30;
+      char typed[len + 2];
+      memcpy(typed, sub, n);
+      typed[n] = n < len ? '_' : 0;  // typewriter cursor
+      typed[n + 1] = 0;
+      cv.setTextColor(C_MID);
+      cv.drawString(typed, (W - len * 6) / 2, 74);
+      if (crash && t > 1000) {
+        cv.setTextColor(C_WARN);
+        cv.drawCenterString(crash, W / 2, 90);
+      }
+    }
+    cv.pushSprite(0, 0);
+    delay(16);
+  }
+}
+
 static void panel(const char* title, const char* msg, const char* hint) {
   backdrop();
   cv.fillRect(0, 0, W, 12, C_BAR);
@@ -827,13 +870,6 @@ void setup() {
     p.end();
   }
   applyTheme();
-  backdrop();
-  cv.setTextSize(3);
-  cv.setTextColor(C_HI);
-  cv.drawCenterString("CARDRONE", W / 2, 44);
-  cv.setTextSize(1);
-  cv.setTextColor(C_MID);
-  cv.drawCenterString("the room plays the drone", W / 2, 80);
   const char* crash = nullptr;  // why the last run ended, if it wasn't a clean power-up
   switch (esp_reset_reason()) {
     case ESP_RST_PANIC: crash = "last run CRASHED (panic)"; break;
@@ -841,12 +877,8 @@ void setup() {
     case ESP_RST_BROWNOUT: crash = "last run lost power (brownout)"; break;
     default: break;
   }
-  if (crash) {
-    cv.setTextColor(C_WARN);
-    cv.drawCenterString(crash, W / 2, 100);
-    Serial.println(crash);
-  }
-  cv.pushSprite(0, 0);
+  if (crash) Serial.println(crash);
+  bootAnimation(crash);
 
   auto sc = M5Cardputer.Speaker.config();
   sc.sample_rate = SR;
@@ -859,7 +891,7 @@ void setup() {
   M5Cardputer.Speaker.begin();
   applyVolume();
   xTaskCreatePinnedToCore(audioTask, "audio", 4096, nullptr, 5, nullptr, APP_CPU_NUM);  // above spk_task (2)
-  delay(crash ? 3000 : 900);
+  if (crash) delay(1500);  // time to read it
 
   WiFi.mode(WIFI_STA);
   if (!resume()) pickNetwork();

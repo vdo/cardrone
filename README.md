@@ -10,13 +10,13 @@ Rendered by the firmware's own drawing code from a simulated room, in which some
 
 | | |
 |---|---|
-| ![Waterfall page](docs/waterfall.png) | ![Bars page](docs/bars.png) |
+| <img src="docs/waterfall.png" width="360" alt="Waterfall page"> | <img src="docs/bars.png" width="360" alt="Bars page"> |
 | **Waterfall**: the 52 subcarriers over time (newest on top): still stripes below, a person walking in above. Mod source meters on the right. | **Bars**: the live subcarrier shape with peak ghosts; amber ticks mark the calibrated empty room. |
-| ![Params page](docs/params.png) | ![Matrix page](docs/matrix.png) |
+| <img src="docs/params.png" width="360" alt="Params page"> | <img src="docs/matrix.png" width="360" alt="Matrix page"> |
 | **Params**: set values as bars, white ticks where the room has pushed them. Greyed params belong to effects that are off. | **Matrix**: 8 routings of source → param with depth; the source meters are live. |
-| ![Options overlay](docs/options.png) | ![Help overlay](docs/help.png) |
+| <img src="docs/options.png" width="360" alt="Options overlay"> | <img src="docs/help.png" width="360" alt="Help overlay"> |
 | **Options** (`` ` ``) | **Help** (`h`) |
-| ![Calibration countdown](docs/cal_countdown.png) | ![Calibration capture](docs/cal_capture.png) |
+| <img src="docs/cal_countdown.png" width="360" alt="Calibration countdown"> | <img src="docs/cal_capture.png" width="360" alt="Calibration capture"> |
 | **Calibrate** (`c`): 5 s to leave the room… | …then the empty room is captured. Any key cancels. |
 
 ## Build / flash
