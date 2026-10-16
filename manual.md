@@ -81,7 +81,7 @@ All room sources run from 0 to 1, and they **adapt to your room**. After a few s
 |---|---|---|
 | **MOT** (motion) | How much the room's WiFi "fingerprint" differs from what it was a moment ago. People walking, standing up, opening doors. | The main "someone is moving" sensor. Smooth and reliable. |
 | **PHS** (phase) | How unsteady the timing of the signal is. Picks up movement in a different way from MOT. | Twitchier and less predictable; good for texture. |
-| **FLX** (flux) | How much the signal changes from one packet to the next. Quick gestures and fast movement. | Fast and jittery; best at small depths or on effects. |
+| **FLX** (flux) | How much the signal changes from one packet to the next. Quick gestures and fast movement. | The quickest source, lively rather than smooth; good on effects. |
 | **RSI** (signal strength) | How strong the WiFi signal is overall. Changes when you move the Cardputer or step between it and the router. | Slow and steady; good for big, gradual changes. |
 | **LO / MID / HI** | How far the low, middle and top third of the 52 slices have moved from normal. Different movements disturb different slices, so these act like three sensors looking at the room from slightly different angles. | Like MOT, but each reacts to different things. After calibrating, they measure the difference from the empty room. |
 | **LFO** | Not from the room: a slow wave from inside the synth. Shape and speed are in the options. | Regular, predictable movement. |

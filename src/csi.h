@@ -107,7 +107,7 @@ struct Csi {
 
     src[S_MOT] += (nMot(dev / NSC) - src[S_MOT]) * 0.2f;
     src[S_PHS] += (nPhs(pv) - src[S_PHS]) * 0.2f;
-    src[S_FLX] += (nFlx(flux / NSC) - src[S_FLX]) * 0.5f;
+    src[S_FLX] += (nFlx(flux / NSC) - src[S_FLX]) * 0.2f;  // as the others: ~100 ms at 50 Hz
     src[S_RSSI] = clamp01((rssiDbm + 90) / 60.f);
     for (int j = 0; j < NBAND; j++) src[S_LO + j] += (nBand[j](band[j] / cnt[j]) - src[S_LO + j]) * 0.2f;
     rssi = rssiDbm;
