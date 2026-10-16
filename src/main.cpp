@@ -264,11 +264,10 @@ static void drawHeader() {
   cv.setTextColor(C_HI);
   cv.drawString("CARDRONE", 3, 2);
   const char* en = ENGINE_NAME[P.engine];
-  int tw = cv.textWidth(en), ew = tw + 5 + 3 * P.voices;
+  int ew = cv.textWidth(en) + 6;
   cv.fillRoundRect(55, 1, ew, 10, 2, ENGINE_COLOR[P.engine]);
   cv.setTextColor(C_BG);
   cv.drawString(en, 58, 2);
-  for (int v = 0; v < P.voices; v++) cv.fillRect(59 + tw + v * 3, 3, 2, 6, C_BG);  // one bar per voice
   char s[24];
   snprintf(s, sizeof s, "%s%d %s", NOTE_NAME[P.root], P.octave, SCALES[P.scale].name);
   cv.setTextColor(C_HI);

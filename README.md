@@ -50,8 +50,8 @@ Nothing sounds until `Enter` (play). On the ADV, plugging headphones into the ja
 | Key | Action |
 |---|---|
 | `Tab` | page: Waterfall → Bars → Params → Matrix |
-| `1`–`7` | engine: PWM, SAW (supersaw), FM (bell), ORGAN (subcarrier additive), WAVE (wavetable), VOICE (formant choir), SHEP (endless Shepard drone) |
-| `n` | voices: 1 (root), 2 (+ fifth), 3 (+ sub); shown as bars in the engine tag |
+| `1`–`7` | engine: PWM, SAW (supersaw), FM (bell), ORG (subcarrier additive organ), WAVE (wavetable), VOICE (formant choir), NOISE (dust, wind, pipe, static, metal) |
+| `n` | voices: 1 (root), 2 (+ fifth), 3 (+ sub) |
 | `r` | randomize params in drone-friendly ranges (pitch, noise and level stay put); hold 3 s to also randomize the mod matrix (sources, destinations, depths) and the LFO shape |
 | `[` `]` | root note down / up |
 | `9` `0` | octave down / up |
@@ -78,7 +78,8 @@ Nothing sounds until `Enter` (play). On the ADV, plugging headphones into the ja
 | LFO | internal, bipolar, rate = LFO param |
 
 Destinations: PITCH CUTOFF RESO TIMBRE SPREAD NOISE LFO LEVEL DRIVE CRUSH RING CHORUS D.TIME D.FB REVERB SHIMMR.
-TIMBRE is per engine: pulse width, supersaw side level, FM index, how strongly the CSI spectrum shapes the organ partials, wavetable position (sine → warm → triangle → saw → square → "ah" → nasal → glass), vowel (a e i o u), or Shepard glide (0.5 holds still, above rises, below falls).
+TIMBRE is per engine: pulse width, supersaw side level, FM index, how strongly the CSI spectrum shapes the organ partials, wavetable position (sine → warm → triangle → saw → square → "ah" → nasal → glass), vowel (a e i o u), or the kind of noise (dust → wind → pipe → static → metal, morphing in between).
+DRIVE is analog-style: biased like a tube for even harmonics, and darker the harder it is pushed.
 The LFO shape is saved with presets; the theme is saved on the device.
 
 ## Tuning on hardware

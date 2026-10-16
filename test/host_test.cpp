@@ -112,6 +112,25 @@ int main(int argc, char** argv) {
     assert(fabsf(syn.eff[P_CUTOFF] - 0.45f) < 0.02f && syn.eff[P_REVERB] > 0.95f);  // fully moved
   }
 
+  // Analog drive: a pushed pure tone grows a 2nd harmonic (tube-like bias), not just odd ones.
+  {
+    syn.pt = DEFAULT_PATCH;
+    syn.pt.engine = E_FM, syn.pt.voices = 1, syn.pt.fx = FX_DRIVE;  // FM at TIMBRE 0: a sine at A2 = 110 Hz
+    syn.pt.p[P_TIMBRE] = 0, syn.pt.p[P_CUTOFF] = 1, syn.pt.p[P_DRIVE] = 0.8f, syn.pt.p[P_LEVEL] = 0.5f;
+    for (auto& s : syn.pt.mod) s.depth = 0;
+    float src0[NSRC] = {}, flat[NSC];
+    for (float& f : flat) f = 0.5f;
+    for (int i = 0; i + 512 <= SR * 4; i += 512) syn.render(pcm + i, 512, src0, flat);
+    auto mag = [&](double hz) {  // DFT magnitude over the last second (whole cycles of 110 Hz)
+      double re = 0, im = 0;
+      for (int i = 0; i < SR; i++) re += pcm[SR * 3 + i] * cos(2 * M_PI * hz * i / SR), im += pcm[SR * 3 + i] * sin(2 * M_PI * hz * i / SR);
+      return sqrt(re * re + im * im);
+    };
+    double h2 = 20 * log10(mag(220) / mag(110));
+    printf("drive 0.8: 2nd harmonic %.1f dB\n", h2);
+    assert(h2 > -30);
+  }
+
   // REVERB and SHIMMER maxed on a held drone: the shimmer loop must bloom, not run away and pin.
   {
     syn.pt = DEFAULT_PATCH;

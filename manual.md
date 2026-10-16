@@ -18,7 +18,7 @@ Plug in headphones and the speaker switches off by itself.
 
 **Header**, from left to right:
 
-- the engine name, in its own color, so you can tell at a glance which one is playing, with one small bar per voice; then the root note, octave and scale, e.g. `A2 MINOR`
+- the engine name, in its own color, so you can tell at a glance which one is playing; then the root note, octave and scale, e.g. `A2 MINOR`
 - the network mode letter and channel: `A` auto, `J` join, `L` listen, so `A6` means AUTO on channel 6
 - how many WiFi measurements arrive per second, e.g. `48Hz` (amber when nothing is coming in)
 - the battery level (in the warning color below 20%)
@@ -105,10 +105,10 @@ Press `1`–`7`. The sound fades over when you switch.
 | `1` | **PWM** | Six pulse waves (root, fifth, sub) with slowly drifting widths. Warm and analog. | how much the pulse widths move | detune between voice pairs |
 | `2` | **SAW** | Seven-voice supersaw plus a sine sub. Big and lush. | level of the side voices | detune |
 | `3` | **FM** | Three FM bells (root, fifth, sub). Glassy and metallic. | brightness (FM depth) | slight beating between the bells |
-| `4` | **ORGAN** | An organ of 16 partials whose loudness follows the live shape of the WiFi signal. The room literally shapes the tone. | how strongly the signal shapes the partials | stretches the partials apart (more bell-like) |
+| `4` | **ORG** | An organ of 16 partials whose loudness follows the live shape of the WiFi signal. The room literally shapes the tone. | how strongly the signal shapes the partials | stretches the partials apart (more bell-like) |
 | `5` | **WAVE** | Wavetable. | scans 8 waves: sine → warm → triangle → saw → square → "ah" → nasal → glass | detune |
 | `6` | **VOICE** | A choir: four voices through vocal formants. | the vowel: a → e → i → o → u | choir detune |
-| `7` | **SHEP** | A Shepard drone: octaves that slide forever without ever getting higher or lower. | glide: 0.5 holds still, above rises, below falls | how wide the bell of octaves is |
+| `7` | **NOISE** | Five kinds of noise, not just colors: **dust** (vinyl crackle, embers), **wind** (howling around the drone's harmonics), **pipe** (breath through tubes tuned to the drone), **static** (choppy shortwave), **metal** (8-bit console noise ringing at the drone's pitch). | which kind; in between, two neighbors blend | dust: density · wind: how wide the howl is · pipe: how short the ring · static: how crunchy |
 
 ### Voices
 
@@ -118,7 +118,7 @@ Press `n` to choose how many tones the drone stacks:
 - **2**: root and the fifth above it, the classic open drone
 - **3**: root, fifth and an octave below (the default)
 
-Every engine follows this. ORGAN shares its 16 partials among the voices, so at 1 voice it is one rich tone and at 3 a chord. SHEP gets one endless slide per voice. Fewer voices also leaves the synth more headroom (lower `DSP %`). The voice count is saved with presets.
+Every engine follows this. ORG shares its 16 partials among the voices, so at 1 voice it is one rich tone and at 3 a chord. NOISE tunes its wind, pipes and metal to each voice. Fewer voices also leaves the synth more headroom (lower `DSP %`). The voice count is saved with presets.
 
 ## Params
 
@@ -132,7 +132,7 @@ Every engine follows this. ORGAN shares its 16 partials among the voices, so at 
 | NOISE | Adds breathy noise (off by default) |
 | LFO | Speed of the internal LFO |
 | LEVEL | Output level of the drone |
-| DRIVE | Warm saturation |
+| DRIVE | Analog-style saturation: warm even harmonics like a tube, getting darker the harder you push it |
 | CRUSH | Lo-fi bit and sample-rate reduction |
 | RING | Ring modulation: metallic tremolo, from slow throb to clangorous |
 | CHORUS | Width and shimmer of the chorus |
@@ -202,8 +202,8 @@ Presets live on the SD card in `/cardrone/preset1.json` to `preset8.json`. A pre
 
 - **Breathing room:** PWM, MOT → CUTOFF +40, LFO (drift, slow) → CUTOFF +10, reverb high. The drone opens up when people move and closes when they settle.
 - **Choir that reacts:** VOICE, PHS → TIMBRE +30 so the vowel drifts as the room changes, MOT → REVERB +25.
-- **Endless descent:** SHEP with TIMBRE around 0.3, then RSI → TIMBRE +20 so the slide speeds up as you approach the router.
-- **The room's own voice:** ORGAN with TIMBRE high, so the WiFi signal's shape *is* the timbre. Calibrate first, then try HI → SHIMMR +30.
+- **Weather in the room:** NOISE with TIMBRE around 0.3 (wind), MOT → TIMBRE +25 so walking in turns the wind into breathing pipes, and LFO (drift) → SPREAD +20.
+- **The room's own voice:** ORG with TIMBRE high, so the WiFi signal's shape *is* the timbre. Calibrate first, then try HI → SHIMMR +30.
 
 ## If something seems off
 
