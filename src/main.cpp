@@ -114,7 +114,7 @@ static void onCsi(void*, wifi_csi_info_t* info) {  // WiFi task, core 0
   if (!info || !info->buf || info->len < 128) return;
   if (csiState == CS_RUN) {
     if (!memcmp(info->mac, apMac, 6))  // one transmitter: one coherent channel
-      csi.frame(info->buf, info->len, info->rx_ctrl.rssi, info->first_word_invalid);
+      csi.frame(info->buf, info->len, info->rx_ctrl.rssi);
   } else if (csiState == CS_SURVEY) {  // count CSI-bearing frames per transmitter
     int i = 0;
     while (i < nTalk && memcmp(talk[i].mac, info->mac, 6)) i++;

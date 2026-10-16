@@ -32,7 +32,7 @@ static int esp_reset_reason() { return ESP_RST_POWERON; }
 constexpr int APP_CPU_NUM = 1, ESP_OK = 0;
 static void xTaskCreatePinnedToCore(void (*)(void*), const char*, int, void*, int, void*, int) {}
 
-struct wifi_csi_info_t { struct { int rssi, channel; } rx_ctrl; uint8_t mac[6]; bool first_word_invalid; int8_t* buf; int len; };
+struct wifi_csi_info_t { struct { int rssi, channel; } rx_ctrl; uint8_t mac[6]; int8_t* buf; int len; };
 struct wifi_promiscuous_filter_t { uint32_t filter_mask; };
 struct wifi_csi_config_t { bool lltf_en, htltf_en, stbc_htltf2_en, ltf_merge_en, channel_filter_en; };
 enum { WIFI_PROMIS_FILTER_MASK_MGMT = 1, WIFI_PROMIS_FILTER_MASK_DATA = 2, WIFI_SECOND_CHAN_NONE = 0 };
@@ -152,7 +152,7 @@ static void feedFrame(float t, bool moving) {
     b[2 * i] = (int8_t)(h.imag() + (rand() % 3 - 1));
     b[2 * i + 1] = (int8_t)(h.real() + (rand() % 3 - 1));
   }
-  csi.frame(b, 128, moving ? -52 + (int)(4 * sinf(t)) : -55, false);
+  csi.frame(b, 128, moving ? -52 + (int)(4 * sinf(t)) : -55);
 }
 
 static void savePng(const char* path) {  // 3x nearest-neighbour, RGB565 -> RGB888

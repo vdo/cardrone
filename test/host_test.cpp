@@ -28,7 +28,7 @@ static void feed(float wobble, float noise, int n, float& t) {
       b[2 * i] = (int8_t)(amp * 0.6f);
       b[2 * i + 1] = (int8_t)(amp * 0.8f);
     }
-    csi.frame(b, 128, -55, true);
+    csi.frame(b, 128, -55);
   }
 }
 
@@ -82,6 +82,16 @@ int main(int argc, char** argv) {
   assert(csi.calLeft == -1 && !csi.calibrated);
   csi.calibrate();
   feed(0, 1.5f, kCalFrames, t);
+
+  // A carrier-leak spike beside DC must not show up as a seam: -1/+1 land between their neighbours.
+  {
+    Csi c;
+    int8_t b[128] = {};
+    for (int i = 0; i < 64; i++) b[2 * i + 1] = 30;
+    b[2 * 63 + 1] = 120, b[2 * 1 + 1] = 2;  // -1 hot, +1 dead
+    c.frame(b, 128, -55);
+    assert(fabsf(c.fast[DC_L] - c.fast[DC_L - 1]) < 1e-3f && fabsf(c.fast[DC_R] - c.fast[DC_R + 1]) < 1e-3f);
+  }
 
   // Every engine with every FX and swinging sources: finite, audible, not pinned.
   float src[NSRC] = {}, prof[NSC];

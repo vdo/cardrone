@@ -6,6 +6,7 @@
 #include <cstring>
 
 constexpr int NSC = 52;          // used LLTF subcarriers, ordered -26..-1, 1..26
+constexpr int DC_L = NSC / 2 - 1, DC_R = NSC / 2;  // subcarriers -1 and +1, either side of DC
 constexpr int NBAND = 3;         // LO / MID / HI subcarrier groups
 constexpr int kCalFrames = 150;  // ~3 s of baseline at the 50 Hz ping rate
 // Smallest normaliser range, as a multiple of the noise floor. Higher = a still
@@ -54,18 +55,22 @@ struct Csi {
   }
 
   // b: raw CSI buffer, LLTF first (64 bins of imag,real int8 pairs).
-  void frame(const int8_t* b, int len, int rssiDbm, bool firstWordBad) {
+  void frame(const int8_t* b, int len, int rssiDbm) {
     if (len < 128) return;
     float a[NSC], sum = 0, sinSum = 0;
     int nv = 0;
     for (int k = 0; k < NSC; k++) {
-      int i = k < 26 ? 38 + k : k - 25;    // bins -26..-1 live at 38..63, 1..26 at 1..26
-      if (i == 1 && firstWordBad) i = 2;   // S3 quirk: first 4 bytes may be garbage
+      int i = k < 26 ? 38 + k : k - 25;  // bins -26..-1 live at 38..63, 1..26 at 1..26
       float im = b[2 * i], re = b[2 * i + 1];
       a[k] = sqrtf(re * re + im * im);
-      sum += a[k];
-      if (a[k] > 0.5f) { sinSum += im / a[k]; nv++; }
+      if (k != DC_L && k != DC_R && a[k] > 0.5f) { sinSum += im / a[k]; nv++; }
     }
+    // -1/+1 sit beside the radio's own carrier leakage (and +1 in the S3's
+    // sometimes-garbage first word): rebuild them from their neighbours, or they
+    // draw a seam down the middle of the waterfall.
+    a[DC_L] = (2 * a[DC_L - 1] + a[DC_R + 1]) / 3;
+    a[DC_R] = (a[DC_L - 1] + 2 * a[DC_R + 1]) / 3;
+    for (float v : a) sum += v;
     if (sum < 1) return;
     float inv = NSC / sum;  // divide out AGC gain, keep only the multipath shape
     bool first = frames == 0;
