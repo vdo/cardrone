@@ -8,9 +8,9 @@ You don't need to play notes. Pick a sound, press play, and let the room do the 
 
 1. Flash `cardrone.bin` (see the README) and power on.
 2. The first time, a **network screen** appears. Pick **AUTO** at the top. CARDRONE listens on every WiFi channel for a few seconds and locks onto the busiest signal it hears. No password needed.
-3. The drone is **silent until you press Enter** (the boot screen and the footer remind you). Press Enter to play, and again to stop. The boot screen's top-right corner shows the firmware version.
+3. The drone is **silent until you press Space** (the boot screen and the footer remind you). Press Space to play, and again to stop. Or press a note key (see below) to start on that note. The boot screen's top-right corner shows the firmware version.
 4. Walk around, wave your arms, sit still. Watch the waterfall and listen.
-5. Press `h` any time for the key list, and `` ` `` (the key left of `1`) for options.
+5. Press `i` any time for the key list, and `` ` `` (the key left of `1`) for options.
 
 Plug in headphones and the speaker switches off by itself.
 
@@ -42,7 +42,7 @@ On the right are live meters for the eight **mod sources** (explained below). Th
 
 ### 2. Bars
 
-The same 52 slices as a live bar graph, so you can see the current "shape" of the signal. Dim ghosts show recent peaks. After you calibrate (key `c`), small marks show what the empty room looked like, so you can see how far the room has moved from it.
+The same 52 slices as a live bar graph, so you can see the current "shape" of the signal. Dim ghosts show recent peaks. After you calibrate (key `e`), small marks show what the empty room looked like, so you can see how far the room has moved from it.
 
 ### 3. Params
 
@@ -88,7 +88,7 @@ All room sources run from 0 to 1, and they **adapt to your room**. After a few s
 
 ### Calibrating
 
-Press `c` (or Options → CALIBRATE). A big **LEAVE THE ROOM** countdown gives you 5 seconds to step out. Then the screen shows **CALIBRATING** with a progress bar while CARDRONE records the empty room for about 150 WiFi readings (around 3 seconds at a good rate). When you come back you'll see `BASELINE SET`. Any key cancels, during the countdown or the capture. If it says *waiting for CSI*, no readings are arriving: check the network. From then on, **LO**, **MID** and **HI** measure "how different is the room from empty", which makes them steadier and more meaningful.
+Press `e` (or Options → CALIBRATE). A big **LEAVE THE ROOM** countdown gives you 5 seconds to step out. Then the screen shows **CALIBRATING** with a progress bar while CARDRONE records the empty room for about 150 WiFi readings (around 3 seconds at a good rate). When you come back you'll see `BASELINE SET`. Any key cancels, during the countdown or the capture. If it says *waiting for CSI*, no readings are arriving: check the network. From then on, **LO**, **MID** and **HI** measure "how different is the room from empty", which makes them steadier and more meaningful.
 
 ### Tips for good modulation
 
@@ -112,7 +112,7 @@ Press `1`–`7`. The sound fades over when you switch.
 
 ### Voices
 
-Press `n` to choose how many tones the drone stacks:
+Press `p` to choose how many tones the drone stacks:
 
 - **1**: just the root
 - **2**: root and the fifth above it, the classic open drone
@@ -145,22 +145,34 @@ Changes glide over a fraction of a second, so turning a knob, loading a preset o
 
 ## Keys
 
+The bottom two letter rows are a one-octave keyboard, like a tracker:
+
+```
+ s  d     g  h  j        C#  D#      F#  G#  A#
+z  x  c  v  b  n  m     C   D   E   F   G   A   B
+```
+
+A note sets the drone's root in the current octave (`9` `0` change the octave). The drone glides to it at the speed of your MOD PROFILE, so it steers rather than steps. Pressing a note while stopped starts the drone on that note.
+
 | Key | Action |
 |---|---|
-| **Enter** | play / stop (on Params and Matrix it edits while playing) |
+| **Space** | play / stop, on any page |
+| `z x c v b n m` | white notes C D E F G A B: the drone moves to that root in the current octave |
+| `s d g h j` | black notes C# D# F# G# A# |
+| **Enter** | on Params and Matrix it edits; elsewhere play / stop |
 | **Tab** | next page |
 | `1`–`7` | engine |
-| `n` | voices: 1, 2 or 3 (see below) |
-| `[` `]` | root note down / up |
+| `p` | voices: 1, 2 or 3 (see below) |
+| `[` `]` | root note down / up a semitone |
 | `9` `0` | octave down / up |
 | `k` | next scale: minor, major, dorian, phrygian, pentatonic, fifths, chromatic |
 | `r` | randomize params (pitch, noise and level stay put; shimmer usually stays out); **keep holding 3 s** (the footer counts down) to also randomize the modulation: every slot's source, param and depth, plus the LFO shape. The Matrix page then opens to show them. |
-| `c` | calibrate the empty room (5 s countdown to leave, any key cancels) |
-| `s` then `1`–`8` | save a preset to the SD card |
+| `e` | calibrate the empty room (5 s countdown to leave, any key cancels) |
+| `w` then `1`–`8` | save (write) a preset to the SD card |
 | `l` then `1`–`8` | load a preset from the SD card |
 | `-` `=` | volume |
 | `` ` `` | options |
-| `h` | help |
+| `i` | help |
 | `;` `.` | up / down |
 | `,` `/` | adjust |
 | **Del** | Matrix: switch the slot off |
@@ -196,7 +208,7 @@ In the list, `;` `.` move, Enter picks, `` ` `` goes back. Networks with `*` nee
 
 ## Presets
 
-Presets live on the SD card in `/cardrone/preset1.json` to `preset8.json`. A preset holds the engine, root, octave, scale, which effects are on, the LFO shape, all params and the whole matrix. Press `s` or `l`, then a number; any other key cancels.
+Presets live on the SD card in `/cardrone/preset1.json` to `preset8.json`. A preset holds the engine, root, octave, scale, which effects are on, the LFO shape, all params and the whole matrix. Press `w` (save) or `l` (load), then a number; any other key cancels.
 
 ## Recipes
 

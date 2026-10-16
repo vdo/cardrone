@@ -15,9 +15,9 @@ Rendered by the firmware's own drawing code from a simulated room, in which some
 | <img src="docs/params.png" width="360" alt="Params page"> | <img src="docs/matrix.png" width="360" alt="Matrix page"> |
 | **Params**: set values as bars, white ticks where the room has pushed them. Greyed params belong to effects that are off. | **Matrix**: 8 routings of source → param with depth; the source meters are live. |
 | <img src="docs/options.png" width="360" alt="Options overlay"> | <img src="docs/help.png" width="360" alt="Help overlay"> |
-| **Options** (`` ` ``) | **Help** (`h`) |
+| **Options** (`` ` ``) | **Help** (`i`) |
 | <img src="docs/cal_countdown.png" width="360" alt="Calibration countdown"> | <img src="docs/cal_capture.png" width="360" alt="Calibration capture"> |
-| **Calibrate** (`c`): 5 s to leave the room… | …then the empty room is captured. Any key cancels. |
+| **Calibrate** (`e`): 5 s to leave the room… | …then the empty room is captured. Any key cancels. |
 
 ## Build / flash
 
@@ -39,31 +39,34 @@ The network screen opens on first boot, and later from `` ` `` → NETWORK. Your
 | JOIN | Associates, then pings the router 50×/s so it keeps answering. Needs the password. | steadiest, ~50 Hz+ |
 | LISTEN | Promiscuous on one network's channel, filtered to that router. No password. | depends on the router's traffic; beacons sent at 1 Mbps yield no CSI |
 
-The header shows the mode letter, channel and CSI rate, e.g. `A6 48Hz`, then the battery. The drone stays silent until you press `Enter`. Started before CSI arrives, it hums on the LFO.
+The header shows the mode letter, channel and CSI rate, e.g. `A6 48Hz`, then the battery. The drone stays silent until you press `Space` (or a note key). Started before CSI arrives, it hums on the LFO.
 
 ## Audio out
 
-Nothing sounds until `Enter` (play). On the ADV, plugging headphones into the jack switches the speaker amp off in hardware. Neither the amp enable nor the headphone-detect line reaches a GPIO, so software can only mute both outputs together: `` ` `` → AUDIO OUT.
+Nothing sounds until `Space` (play). On the ADV, plugging headphones into the jack switches the speaker amp off in hardware. Neither the amp enable nor the headphone-detect line reaches a GPIO, so software can only mute both outputs together: `` ` `` → AUDIO OUT.
 
 ## Keys
 
 | Key | Action |
 |---|---|
+| `Space` | play / stop on any page (fades, resumes where it left off) |
+| `z x c v b n m` | white notes C D E F G A B: set the drone's root in the current octave (it glides there; a note while stopped starts playing) |
+| `s d g h j` | black notes C# D# F# G# A# |
 | `Tab` | page: Waterfall → Bars → Params → Matrix |
 | `1`–`7` | engine: PWM, SAW (supersaw), FM (bell), ORG (subcarrier additive organ), WAVE (wavetable), VOICE (formant choir), NOISE (dust, wind, surf, static, metal) |
-| `n` | voices: 1 (root), 2 (+ fifth), 3 (+ sub) |
+| `p` | voices: 1 (root), 2 (+ fifth), 3 (+ sub) |
 | `r` | randomize params in drone-friendly ranges (pitch, noise and level stay put, shimmer only now and then); keep holding 3 s (the footer counts down) to also randomize the mod matrix (sources, destinations, depths) and the LFO shape, then the Matrix page opens |
-| `[` `]` | root note down / up |
+| `[` `]` | root note down / up a semitone |
 | `9` `0` | octave down / up |
 | `k` | cycle scale (CSI pitch drift is quantised to it) |
-| `c` | calibrate an empty-room baseline: 5 s countdown to leave the room, then ~3 s capture (any key cancels); LO/MID/HI then measure deviation from it |
-| `s` / `l` then `1`–`8` | save / load preset to `/cardrone/presetN.json` on SD |
+| `e` | calibrate an empty-room baseline: 5 s countdown to leave the room, then ~3 s capture (any key cancels); LO/MID/HI then measure deviation from it |
+| `w` / `l` then `1`–`8` | save (write) / load preset to `/cardrone/presetN.json` on SD |
 | `-` `=` | volume |
 | `` ` `` | options: audio out, volume, mod profile (sharp, normal, smooth, slow), LFO shape (sine, triangle, saw, square, S&H, drift) and rate, theme (green, yellow, red, blue, B&W), network, calibrate |
-| `h` | key help overlay |
+| `i` | key help overlay |
 | `;` `.` | up / down (Params, Matrix) |
 | `,` `/` | adjust value (Params, Matrix) |
-| `Enter` | play / stop (fades, resumes where it left off). While playing on Params it toggles the selected param's FX, on Matrix it moves to the next column (src → dest → depth) |
+| `Enter` | on Params, toggles the selected param's FX; on Matrix, moves to the next column (src → dest → depth); elsewhere play / stop |
 | `Del` | Matrix: clear slot |
 
 ## Mod sources (from CSI)
@@ -74,7 +77,7 @@ Nothing sounds until `Enter` (play). On the ADV, plugging headphones into the ja
 | PHS | phase variance |
 | FLX | frame-to-frame flux (fast, jittery) |
 | RSI | RSSI |
-| LO / MID / HI | deviation per subcarrier third (from the baseline after `c`) |
+| LO / MID / HI | deviation per subcarrier third (from the baseline after `e`) |
 | LFO | internal, bipolar, rate = LFO param |
 
 Destinations: PITCH CUTOFF RESO TIMBRE SPREAD NOISE LFO LEVEL DRIVE CRUSH RING CHORUS D.TIME D.FB REVERB SHIMMR.

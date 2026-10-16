@@ -58,7 +58,7 @@ static void applyTheme() {
 enum Page { PG_WATERFALL, PG_BARS, PG_PARAMS, PG_MATRIX, NPAGE };
 enum Overlay { OV_NONE, OV_HELP, OV_OPTIONS };
 constexpr int NOPT = 8;  // options: audio out, volume, mod profile, lfo shape, lfo rate, theme, network, calibrate
-static const char* const HINTS[NPAGE] = {"TAB view  1-7 drone  r random  h help", "c calibrate  s/l preset  h help",
+static const char* const HINTS[NPAGE] = {"TAB view  z-m notes  r random  i help", "e calibrate  w/l preset  i help",
                                          ";. select  ,/ adjust  ENTER fx on/off", ";. row  ENTER column  ,/ adj  DEL off"};
 // M5Unified doubles a mono stream, then scales by 32*vol^2*255^2/2^36: 180 is
 // unity gain, so a full-scale drone hard-clips in its mixer above that.
@@ -224,7 +224,7 @@ static void bootAnimation(const char* crash) {
       cv.drawString(typed, (W - len * 6) / 2, 74);
       if (n == len && t / 400 % 2) {  // the drone starts silent: say how to start it
         cv.setTextColor(C_HI);
-        cv.drawCenterString("press ENTER to play", W / 2, 88);
+        cv.drawCenterString("press SPACE to play", W / 2, 88);
       }
       cv.setTextColor(C_DIM);
       cv.drawRightString(CARDRONE_VERSION, W - 3, 3);
@@ -378,19 +378,18 @@ static void drawMatrix() {
 
 static void drawHelp() {
   static const char* const K[][2] = {
-      {"TAB", "next page"}, {"1-7", "drone engine"}, {"[ ]", "root note"}, {"9 0", "octave"},
-      {"k", "scale"},       {"r", "rnd; hold: mods"},      {"c", "calibrate room"}, {"s l", "save/load 1-8"},
-      {"- =", "volume"},    {"`", "options+network"}, {";.", "up / down"}, {",/", "adjust"},
-      {"ENT", "play/stop, edit"}, {"DEL", "clear mod slot"}, {"n", "voices 1-3"}, {"h", "this help"}};
+      {"SPC", "play / stop"},  {"z-m", "white notes"},     {"s-j", "black notes"},    {"1-7", "drone engine"},
+      {"p", "voices 1-3"},     {"9 0", "octave"},          {"[ ]", "root -/+"},       {"k", "scale"},
+      {"r", "rnd; hold: mods"}, {"e", "calibrate room"},   {"TAB", "next page"},      {";.", "up / down"},
+      {",/", "adjust"},        {"ENT", "edit / play"},     {"DEL", "clear mod slot"}, {"w l", "save/load 1-8"},
+      {"- =", "volume"},       {"`", "options+network"},   {"i", "this help"}};
   for (int i = 0; i < (int)(sizeof K / sizeof *K); i++) {
-    int x = 6 + (i / 8) * 120, y = 16 + (i % 8) * 11;
+    int x = 6 + (i / 10) * 120, y = 14 + (i % 10) * 10;
     cv.setTextColor(C_HI);
     cv.drawString(K[i][0], x, y);
     cv.setTextColor(C_MID);
     cv.drawString(K[i][1], x + 24, y);
   }
-  cv.setTextColor(C_DIM);
-  cv.drawCenterString("headphones plugged in = speaker off", W / 2, 103);
 }
 
 static void drawOptions() {
@@ -471,14 +470,14 @@ static void drawFooter() {
   bool note = pending || millis() < toastUntil || *hold;
   bool idle = !playing && !overlay && !calibrating();  // pulse "ENTER play" while silent
   cv.setTextColor(note ? C_WARN : idle && millis() / 500 % 2 ? C_HI : C_DIM);
-  cv.drawString(pending == 's'              ? "SAVE to slot 1-8 (other key cancels)"
+  cv.drawString(pending == 'w'              ? "SAVE to slot 1-8 (other key cancels)"
                 : pending                   ? "LOAD slot 1-8 (other key cancels)"
                 : *hold                     ? hold
                 : note                      ? toast
                 : calibrating()             ? "any key cancels"
                 : overlay == OV_HELP        ? "any key closes"
                 : overlay == OV_OPTIONS     ? ";. move  ,/ ENTER change  ` close"
-                : !playing                  ? "ENTER play  TAB view  h help"
+                : !playing                  ? "SPACE play  z-m notes  i help"
                                             : HINTS[page],
                 3, 126);
 }
@@ -848,7 +847,7 @@ static void onKey(char c) {
   }
   if (overlay == OV_OPTIONS) return optionsKey(c);
   if (pending) {
-    bool save = pending == 's';
+    bool save = pending == 'w';
     pending = 0;
     if (c < '1' || c > '8') return say("cancelled");
     bool ok = save ? savePreset(c - '0') : loadPreset(c - '0');
@@ -856,7 +855,14 @@ static void onKey(char c) {
     snprintf(s, sizeof s, "%s %c %s", save ? "SAVE" : "LOAD", c, ok ? "ok" : "FAILED (SD card?)");
     return say(s);
   }
+  static const char NOTE_KEYS[] = "zsxdcvgbhnjm";  // piano on the bottom rows: index = semitone above C
+  if (const char* k = c ? strchr(NOTE_KEYS, c) : nullptr) {
+    P.root = k - NOTE_KEYS;
+    playing = true;  // a note while stopped starts the drone on it
+    return;
+  }
   switch (c) {
+    case ' ': playing = !playing; break;
     case '\t': page = (page + 1) % NPAGE; break;
     case '\n':
       if (!playing || page < PG_PARAMS) playing = !playing;  // Params/Matrix keep ENTER for editing while playing
@@ -864,11 +870,11 @@ static void onKey(char c) {
       else mCol = (mCol + 1) % 3;
       break;
     case '\b': if (page == PG_MATRIX) P.mod[mRow].depth = 0; break;
-    case 'h': overlay = OV_HELP; break;
+    case 'i': overlay = OV_HELP; break;
     case '`': overlay = OV_OPTIONS; break;
     case '1': case '2': case '3': case '4': case '5': case '6': case '7': P.engine = c - '1'; break;
     case 'r': randomize(); break;
-    case 'n': {
+    case 'p': {
       static const char* const DESC[3] = {"VOICES 1: root", "VOICES 2: root + fifth", "VOICES 3: root + fifth + sub"};
       P.voices = P.voices % 3 + 1;
       say(DESC[P.voices - 1]);
@@ -879,8 +885,8 @@ static void onKey(char c) {
     case '9': if (P.octave > 0) P.octave--; break;
     case '0': if (P.octave < 5) P.octave++; break;
     case 'k': P.scale = (P.scale + 1) % NSCALE; break;
-    case 'c': startCalibration(); break;
-    case 's': case 'l': pending = c; break;
+    case 'e': startCalibration(); break;
+    case 'w': case 'l': pending = c; break;
     case '-': case '=':
       vol = constrain(vol + (c == '=' ? 12 : -12), 0, VOL_MAX);
       applyVolume();

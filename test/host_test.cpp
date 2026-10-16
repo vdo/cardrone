@@ -118,6 +118,19 @@ int main(int argc, char** argv) {
     assert(fabsf(syn.eff[P_CUTOFF] - 0.45f) < 0.02f && syn.eff[P_REVERB] > 0.95f);  // fully moved
   }
 
+  // Note keys set the root: the drone slides there instead of jumping.
+  {
+    syn.pt = DEFAULT_PATCH;  // A2 = 110 Hz
+    float src0[NSRC] = {}, flat[NSC];
+    for (float& f : flat) f = 0.5f;
+    for (int i = 0; i < 300; i++) syn.render(pcm, 512, src0, flat);
+    syn.pt.root = 4;  // E2 = 82.4 Hz
+    syn.render(pcm, 512, src0, flat);
+    assert(syn.freq > 100);  // one block in: still near A
+    for (int i = 0; i < 400; i++) syn.render(pcm, 512, src0, flat);
+    assert(fabsf(syn.freq - 82.41f) < 0.5f);
+  }
+
   // Analog drive: a pushed pure tone grows a 2nd harmonic (tube-like bias), not just odd ones.
   {
     syn.pt = DEFAULT_PATCH;

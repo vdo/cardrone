@@ -223,6 +223,7 @@ struct Synth {
   float drvLp = 0, drvDc = 0;  // analog drive: circuit bandwidth, DC blocker
   Slot route[NSLOT];    // the routings as currently applied: glide toward pt.mod
   float routeD[NSLOT];  // their depths, gliding
+  float baseN = -1;  // root + octave as a gliding MIDI note (-1: not started)
   float baseS[NPARAM], modS[NSRC] = {}, lfoPh = 0, lfoA = 0, lfoB = 0, semis = 0, fade = 0, cut = 1000, ic1 = 0, ic2 = 0;
   int engine = -1, curVoices = 3;
   uint8_t fxOn = 0;
@@ -322,8 +323,12 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
 
   // Pitch: quantised to the scale, then glided.
   float target = quantize((eff[P_PITCH] - 0.5f) * 24, SCALES[P.scale < NSCALE ? P.scale : 0].mask);
-  semis += (target - semis) * fminf(n / (mp.pitchTau * SR), 1.f);
-  float f0 = 440 * exp2f((12 * (P.octave + 1) + P.root + semis - 69) / 12);
+  float pitchGlide = fminf(n / (mp.pitchTau * SR), 1.f);
+  semis += (target - semis) * pitchGlide;
+  // Root and octave changes (note keys, [ ], 9 0) glide at the same pace: steering, not stepping.
+  float base = 12 * (P.octave + 1) + P.root;
+  baseN = baseN < 0 ? base : baseN + (base - baseN) * pitchGlide;
+  float f0 = 440 * exp2f((baseN + semis - 69) / 12);
   freq = f0;
   float fv[3] = {f0, f0 * 1.4983f, f0 * 0.5f};  // root, fifth, sub
   float tb = eff[P_TIMBRE], sp = eff[P_SPREAD];
