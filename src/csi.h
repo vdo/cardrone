@@ -37,14 +37,14 @@ struct Csi {
   float src[NSRC] = {};  // mod sources; S_LFO is written by the synth (bipolar)
   volatile uint32_t frames = 0;
   int rssi = -100;
-  volatile int calLeft = 0;
+  volatile int calLeft = 0;  // frames still to capture; <= 0 = not calibrating (the UI may zero it to cancel)
   bool calibrated = false;
   float phWin[32] = {};
   int phIdx = 0, phFill = 0;
   Norm nMot, nPhs, nFlx, nBand[NBAND];
 
   // Empty-room baseline: LO/MID/HI then measure deviation from it instead of
-  // from the slow running average.
+  // from the slow running average. Cancel by zeroing calLeft.
   void calibrate() {
     memset(base, 0, sizeof base);
     calibrated = false;
@@ -83,9 +83,9 @@ struct Csi {
       cnt[bi]++;
       lo = fminf(lo, fast[k]);
       hi = fmaxf(hi, fast[k]);
-      if (calLeft) base[k] += v / kCalFrames;
+      if (calLeft > 0) base[k] += v / kCalFrames;
     }
-    if (calLeft && --calLeft == 0) calibrated = true;
+    if (calLeft > 0 && --calLeft == 0) calibrated = true;  // a cancel racing the decrement leaves -1: idle
     for (int k = 0; k < NSC; k++) prof[k] = (fast[k] - lo) / (hi - lo + 1e-6f);
     profLo = lo;
     profHi = hi;

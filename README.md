@@ -16,6 +16,8 @@ Rendered by the firmware's own drawing code from a simulated room, in which some
 | **Params**: set values as bars, white ticks where the room has pushed them. Greyed params belong to effects that are off. | **Matrix**: 8 routings of source → param with depth; the source meters are live. |
 | ![Options overlay](docs/options.png) | ![Help overlay](docs/help.png) |
 | **Options** (`` ` ``) | **Help** (`h`) |
+| ![Calibration countdown](docs/cal_countdown.png) | ![Calibration capture](docs/cal_capture.png) |
+| **Calibrate** (`c`): 5 s to leave the room… | …then the empty room is captured. Any key cancels. |
 
 ## Build / flash
 
@@ -51,7 +53,7 @@ Nothing sounds until `Enter` (play). On the ADV, plugging headphones into the ja
 | `[` `]` | root note down / up |
 | `9` `0` | octave down / up |
 | `k` | cycle scale (CSI pitch drift is quantised to it) |
-| `c` | calibrate an empty-room baseline (~3 s; LO/MID/HI then measure deviation from it) |
+| `c` | calibrate an empty-room baseline: 5 s countdown to leave the room, then ~3 s capture (any key cancels); LO/MID/HI then measure deviation from it |
 | `s` / `l` then `1`–`8` | save / load preset to `/cardrone/presetN.json` on SD |
 | `-` `=` | volume |
 | `` ` `` | options: audio out, volume, mod profile (sharp, normal, smooth, slow), LFO shape (sine, triangle, saw, square, S&H, drift) and rate, theme (green, yellow, red, blue), network, calibrate |
@@ -97,3 +99,7 @@ c++ -std=c++17 -O2 -Isrc -I.pio/libdeps/cardrone/M5GFX/src/lgfx/Fonts test/scree
 ```
 
 The host test exercises the scale quantiser, preset JSON (including hostile input), CSI motion response, and renders every engine. With a directory argument it also writes WAVs there.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

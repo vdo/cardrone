@@ -217,4 +217,6 @@ int main(int argc, char** argv) {
   page = PG_MATRIX, mRow = 0, mCol = 2, shot("matrix");
   page = PG_WATERFALL, overlay = OV_OPTIONS, optCur = 2, shot("options");
   overlay = OV_HELP, shot("help");
+  overlay = OV_NONE, calAt = millis() + 3500, shot("cal_countdown");
+  calAt = 0, csi.calLeft = kCalFrames * 2 / 5, shot("cal_capture");
 }

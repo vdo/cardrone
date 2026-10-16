@@ -76,6 +76,12 @@ int main(int argc, char** argv) {
   csi.calibrate();
   for (int i = 0; i < kCalFrames; i++) feed(0, 1.5f, 1, t);
   assert(csi.calibrated && !csi.calLeft);
+  csi.calibrate();  // a cancel racing frame()'s decrement must not leave it capturing forever
+  csi.calLeft = -1;
+  feed(0, 1.5f, 3, t);
+  assert(csi.calLeft == -1 && !csi.calibrated);
+  csi.calibrate();
+  feed(0, 1.5f, kCalFrames, t);
 
   // Every engine with every FX and swinging sources: finite, audible, not pinned.
   float src[NSRC] = {}, prof[NSC];

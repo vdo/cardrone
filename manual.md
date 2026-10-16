@@ -86,7 +86,7 @@ All room sources run from 0 to 1, and they **adapt to your room**. After a few s
 
 ### Calibrating
 
-Press `c` (or Options → CALIBRATE), then keep the room still or step out. CARDRONE records the empty room for about 150 WiFi readings; the header shows `CAL` and a percentage. When it's done you'll see `BASELINE SET`. From then on, **LO**, **MID** and **HI** measure "how different is the room from empty", which makes them steadier and more meaningful.
+Press `c` (or Options → CALIBRATE). A big **LEAVE THE ROOM** countdown gives you 5 seconds to step out. Then the screen shows **CALIBRATING** with a progress bar while CARDRONE records the empty room for about 150 WiFi readings (around 3 seconds at a good rate). When you come back you'll see `BASELINE SET`. Any key cancels, during the countdown or the capture. If it says *waiting for CSI*, no readings are arriving: check the network. From then on, **LO**, **MID** and **HI** measure "how different is the room from empty", which makes them steadier and more meaningful.
 
 ### Tips for good modulation
 
@@ -142,7 +142,7 @@ Changes glide over a fraction of a second, so turning a knob, loading a preset o
 | `9` `0` | octave down / up |
 | `k` | next scale: minor, major, dorian, phrygian, pentatonic, fifths, chromatic |
 | `r` | randomize params (pitch, noise and level stay put) |
-| `c` | calibrate the empty room |
+| `c` | calibrate the empty room (5 s countdown to leave, any key cancels) |
 | `s` then `1`–`8` | save a preset to the SD card |
 | `l` then `1`–`8` | load a preset from the SD card |
 | `-` `=` | volume |
@@ -165,7 +165,7 @@ Move with `;` `.`, change with `,` `/` or Enter, close with `` ` ``.
 | LFO RATE | from 0.02 Hz (one cycle per ~50 seconds) to about 5 Hz |
 | THEME | green, yellow, red or blue phosphor; remembered after power-off |
 | NETWORK | the network screen (see below) |
-| CALIBRATE | record the empty room |
+| CALIBRATE | record the empty room, after a 5 s countdown to leave |
 
 The bottom line shows the lowest free memory since power-on, which helps with tracking down crashes.
 

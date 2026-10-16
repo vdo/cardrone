@@ -62,6 +62,9 @@ static char pending = 0;     // 's' or 'l' waiting for a slot digit
 static char toast[40];
 static uint32_t toastUntil = 0, csiHz = 0;
 static int batt = -1;  // %, -1 = unknown
+constexpr uint32_t CAL_COUNTDOWN_MS = 5000;  // time to leave the room before the empty-room capture
+static uint32_t calAt = 0;                   // when the countdown ends (millis), 0 = no countdown
+static bool calibrating() { return calAt || csi.calLeft > 0; }
 static uint8_t wf[WF_ROWS][NSC];
 static int wfHead = 0, histHead = 0;
 static float motHist[HIST], srcPeak[NSRC], barPeak[NSC];
@@ -209,11 +212,11 @@ static void drawHeader() {
   cv.setTextColor(C_HI);
   cv.drawString(s, 60 + ew, 2);
   const char tag = "-JLA"[netMode];  // network mode, then channel
-  if (csi.calLeft) snprintf(s, sizeof s, "CAL %d%%", 100 - csi.calLeft * 100 / kCalFrames);
+  if (csi.calLeft > 0) snprintf(s, sizeof s, "CAL %d%%", 100 - csi.calLeft * 100 / kCalFrames);
   else if (netMode == NET_OFF) snprintf(s, sizeof s, "NO NET");
   else if (csiHz) snprintf(s, sizeof s, "%c%d %luHz", tag, netCh, (unsigned long)csiHz);
   else snprintf(s, sizeof s, "%c%d 0Hz", tag, netCh);
-  cv.setTextColor(csi.calLeft || !csiHz ? C_WARN : C_MID);
+  cv.setTextColor(csi.calLeft > 0 || !csiHz ? C_WARN : C_MID);
   cv.drawRightString(s, W - 20, 2);
   uint16_t bc = batt >= 0 && batt < 20 ? C_WARN : C_MID;  // battery: outline, nub, fill
   cv.drawRect(W - 17, 3, 12, 7, bc);
@@ -355,6 +358,35 @@ static void drawOptions() {
   cv.drawString(m, 8, 104);
 }
 
+// Countdown to leave the room, then the capture with a progress bar.
+static void drawCalibration() {
+  char s[24];
+  cv.setTextSize(2);
+  if (calAt) {
+    cv.setTextColor(C_HI);
+    cv.drawCenterString("LEAVE THE ROOM", W / 2, 20);
+    snprintf(s, sizeof s, "%lu", (unsigned long)(calAt - millis() + 999) / 1000);
+    cv.setTextSize(5);
+    cv.setTextColor(C_HOT);
+    cv.drawCenterString(s, W / 2, 44);
+    cv.setTextSize(1);
+    cv.setTextColor(C_MID);
+    cv.drawCenterString("then the empty room gets measured", W / 2, 96);
+    return;
+  }
+  int pct = 100 - csi.calLeft * 100 / kCalFrames;
+  cv.setTextColor(millis() / 500 % 2 ? C_HI : C_MID);  // pulse
+  cv.drawCenterString("CALIBRATING", W / 2, 26);
+  cv.setTextSize(1);
+  cv.drawRect(30, 56, 180, 10, C_DIM);
+  cv.fillRect(32, 58, pct * 176 / 100, 6, C_HI);
+  snprintf(s, sizeof s, "%d%%", pct);
+  cv.setTextColor(C_MID);
+  cv.drawCenterString(s, W / 2, 72);
+  cv.setTextColor(csiHz ? C_MID : C_WARN);
+  cv.drawCenterString(csiHz ? "keep the room empty" : "waiting for CSI...", W / 2, 92);
+}
+
 static void drawFooter() {
   cv.drawFastHLine(0, 113, W, C_MID);
   cv.setTextColor(C_DIM);
@@ -374,6 +406,7 @@ static void drawFooter() {
   cv.drawString(pending == 's'              ? "SAVE to slot 1-8 (other key cancels)"
                 : pending                   ? "LOAD slot 1-8 (other key cancels)"
                 : note                      ? toast
+                : calibrating()             ? "any key cancels"
                 : overlay == OV_HELP        ? "any key closes"
                 : overlay == OV_OPTIONS     ? ";. move  ,/ ENTER change  ` close"
                 : !playing                  ? "ENTER play  TAB view  h help"
@@ -384,7 +417,8 @@ static void drawFooter() {
 static void draw() {
   backdrop();
   drawHeader();
-  if (overlay == OV_HELP) drawHelp();
+  if (calibrating()) drawCalibration();
+  else if (overlay == OV_HELP) drawHelp();
   else if (overlay == OV_OPTIONS) drawOptions();
   else if (page == PG_WATERFALL) drawWaterfall();
   else if (page == PG_BARS) drawBars();
@@ -680,6 +714,11 @@ static void randomize() {
   say("RANDOMIZED");
 }
 
+static void startCalibration() {
+  overlay = OV_NONE;
+  calAt = millis() + CAL_COUNTDOWN_MS;
+}
+
 static void optionsKey(char c) {
   int dir = c == ',' ? -1 : c == '/' ? 1 : 0, step = dir ? dir : c == '\n';  // ENTER steps forward
   Patch& P = syn.pt;
@@ -703,16 +742,17 @@ static void optionsKey(char c) {
     overlay = OV_NONE;
     pickNetwork();
   }
-  if (optCur == 7 && c == '\n') {
-    overlay = OV_NONE;
-    csi.calibrate();
-    say("CALIBRATING: keep the room empty");
-  }
+  if (optCur == 7 && c == '\n') startCalibration();
   applyVolume();
 }
 
 static void onKey(char c) {
   Patch& P = syn.pt;
+  if (calibrating()) {  // any key cancels the countdown or the capture
+    calAt = 0;
+    csi.calLeft = 0;
+    return say("calibration cancelled");
+  }
   if (overlay == OV_HELP) {
     overlay = OV_NONE;
     return;
@@ -744,7 +784,7 @@ static void onKey(char c) {
     case '9': if (P.octave > 0) P.octave--; break;
     case '0': if (P.octave < 5) P.octave++; break;
     case 'k': P.scale = (P.scale + 1) % NSCALE; break;
-    case 'c': csi.calibrate(); say("CALIBRATING: keep the room empty"); break;
+    case 'c': startCalibration(); break;
     case 's': case 'l': pending = c; break;
     case '-': case '=':
       vol = constrain(vol + (c == '=' ? 12 : -12), 0, VOL_MAX);
@@ -856,8 +896,13 @@ void loop() {
     motHist[histHead] = csi.src[S_MOT];
     histHead = (histHead + 1) % HIST;
   }
-  if (wasCal && !csi.calLeft) say("BASELINE SET");
-  wasCal = csi.calLeft;
+  if (calAt && millis() >= calAt) {  // countdown over: capture the empty room
+    calAt = 0;
+    csi.calibrate();
+  }
+  bool cal = csi.calLeft > 0;
+  if (wasCal && !cal && csi.calibrated) say("BASELINE SET");
+  wasCal = cal;
   if (now - tDraw >= 33) {
     tDraw = now;
     draw();
