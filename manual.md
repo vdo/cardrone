@@ -8,7 +8,7 @@ You don't need to play notes. Pick a sound, press play, and let the room do the 
 
 1. Flash `cardrone.bin` (see the README) and power on.
 2. The first time, a **network screen** appears. Pick **AUTO** at the top. CARDRONE listens on every WiFi channel for a few seconds and locks onto the busiest signal it hears. No password needed.
-3. The drone is **silent until you press Enter**. Press Enter to play, and again to stop.
+3. The drone is **silent until you press Enter** (the boot screen and the footer remind you). Press Enter to play, and again to stop. The boot screen's top-right corner shows the firmware version.
 4. Walk around, wave your arms, sit still. Watch the waterfall and listen.
 5. Press `h` any time for the key list, and `` ` `` (the key left of `1`) for options.
 

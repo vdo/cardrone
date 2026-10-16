@@ -1,7 +1,17 @@
 # Post-build: merge bootloader + partitions + boot_app0 + app into one image
 # for web flashers (ESPConnect, esptool-js): flash cardrone.bin at offset 0x0.
+# Also stamps the firmware with `git describe` (v0.3 on a release tag,
+# v0.3-2-gabc1234 between releases), shown on the boot screen.
 import os
-Import("env")
+import subprocess
+Import("env", "projenv")
+
+try:
+    version = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"],
+                                      cwd=env.subst("$PROJECT_DIR"), text=True).strip()
+except Exception:
+    version = "dev"
+projenv.Append(CPPDEFINES=[("CARDRONE_VERSION", env.StringifyMacro(version))])
 
 
 def merge(source, target, env):

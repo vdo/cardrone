@@ -25,6 +25,8 @@ Rendered by the firmware's own drawing code from a simulated room, in which some
 pio run -t upload
 ```
 
+The boot screen shows the firmware version from `git describe`: `v0.3` on a release, `v0.3-2-gabc1234` between releases (`-dirty` with uncommitted changes).
+
 Every build also writes `cardrone.bin`, a merged image of bootloader, partitions, boot_app0 and app; a prebuilt one is on the [releases page](https://github.com/vdo/cardrone/releases/latest). To flash it without PlatformIO, open [ESPConnect](https://thelastoutpostworkshop.github.io/ESPConnect/), connect, go to Flash Firmware, load `cardrone.bin`, set offset `0x0`, and flash. If the device doesn't show up, hold G0 while plugging in USB.
 
 ## Network modes

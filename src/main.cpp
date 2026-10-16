@@ -12,6 +12,9 @@
 #include "ping/ping_sock.h"
 #endif
 #include <functional>
+#ifndef CARDRONE_VERSION  // merge_bin.py stamps `git describe` here
+#define CARDRONE_VERSION "dev"
+#endif
 #include "csi.h"
 #include "dsp.h"
 
@@ -182,9 +185,13 @@ static void backdrop() {
 
 // Boot: a CRT warming up, then the title over a rippling subcarrier skyline.
 static void bootAnimation(const char* crash) {
-  static const char sub[] = "the room plays the drone";
-  constexpr int len = sizeof sub - 1, cy = H / 2;
-  for (uint32_t t0 = millis(), t = 0; t < 3200; t = millis() - t0) {  // typing ends ~1.6 s, then 1.5 s to read
+  static const char* const TAGLINES[] = {"the room plays the drone",        "every body bends the signal",
+                                         "listening to the air",            "your movement is the instrument",
+                                         "52 subcarriers, one drone",       "slow music for still rooms"};
+  const char* sub = TAGLINES[esp_random() % (sizeof TAGLINES / sizeof *TAGLINES)];
+  const int len = strlen(sub), cy = H / 2;
+  const uint32_t end = 900 + len * 30 + 1500;  // typing, then 1.5 s to read
+  for (uint32_t t0 = millis(), t = 0; t < end; t = millis() - t0) {
     cv.fillSprite(C_BG);
     if (t < 180) {  // power-on: a line stretches out from the center...
       int w = W * t / 180;
@@ -207,15 +214,21 @@ static void bootAnimation(const char* crash) {
       cv.drawCenterString("CARDRONE", W / 2, 38);
       cv.setTextSize(1);
       int n = constrain((int)t - 900, 0, len * 30) / 30;
-      char typed[len + 2];
+      char typed[48];
       memcpy(typed, sub, n);
       typed[n] = n < len ? '_' : 0;  // typewriter cursor
       typed[n + 1] = 0;
       cv.setTextColor(C_MID);
       cv.drawString(typed, (W - len * 6) / 2, 74);
+      if (n == len && t / 400 % 2) {  // the drone starts silent: say how to start it
+        cv.setTextColor(C_HI);
+        cv.drawCenterString("press ENTER to play", W / 2, 88);
+      }
+      cv.setTextColor(C_DIM);
+      cv.drawRightString(CARDRONE_VERSION, W - 3, 3);
       if (crash && t > 1000) {
         cv.setTextColor(C_WARN);
-        cv.drawCenterString(crash, W / 2, 90);
+        cv.drawCenterString(crash, W / 2, 20);
       }
     }
     cv.pushSprite(0, 0);
@@ -450,7 +463,8 @@ static void drawFooter() {
   cv.setTextColor(playing ? C_DIM : C_WARN);
   cv.drawRightString(s, W - 3, 116);
   bool note = pending || millis() < toastUntil;
-  cv.setTextColor(note ? C_WARN : C_DIM);
+  bool idle = !playing && !overlay && !calibrating();  // pulse "ENTER play" while silent
+  cv.setTextColor(note ? C_WARN : idle && millis() / 500 % 2 ? C_HI : C_DIM);
   cv.drawString(pending == 's'              ? "SAVE to slot 1-8 (other key cancels)"
                 : pending                   ? "LOAD slot 1-8 (other key cancels)"
                 : note                      ? toast
