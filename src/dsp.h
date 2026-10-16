@@ -222,7 +222,10 @@ struct Synth {
   }
 
   // src: NSRC mod sources (S_LFO is written here). prof: NSC subcarrier shape.
-  void render(int16_t* out, int n, float* src, const float* prof);
+  // Params are recomputed every SUB samples: coarser steps zipper and click under fast modulation.
+  void render(int16_t* out, int n, float* src, const float* prof) {
+    for (int o = 0; o < n; o += SUB) block(out + o, n - o < SUB ? n - o : SUB, src, prof);
+  }
 
  private:
   float ph[16] = {}, pwmPh[6] = {}, mph[3] = {}, partAmp[16] = {}, fz1[3] = {}, fz2[3] = {};
@@ -251,6 +254,8 @@ struct Synth {
   float combLp[6] = {}, shm[SHM_N] = {}, shmPh = 0, shimOut = 0, shimLp = 0, wetEnv = 0, dryEnv = 0;
   int ci[6] = {}, ai[3] = {}, shmW = 0;
 
+  static constexpr int SUB = 128;
+  void block(int16_t* out, int n, float* src, const float* prof);
   float dlyTarget() const { return (0.04f + eff[P_DTIME] * 0.38f) * SR; }
   DSP_AI float rnd() {  // xorshift, -1..1
     rng ^= rng << 13;
@@ -283,19 +288,23 @@ struct Synth {
 
 // Out of line, not inline: an inline function's literals land in flash, out of
 // reach of IRAM code. So only one translation unit per program includes dsp.h.
-DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) {
+DSP_IRAM void Synth::block(int16_t* out, int n, float* src, const float* prof) {
   const Patch& P = pt;
-  lfoPh += n * lfoHz(eff[P_LFO]) / SR;
+  const float bs = n * (1.f / 512);  // block size vs the 512 the per-block random walks were tuned at
+  float rate = lfoHz(eff[P_LFO]);
+  lfoPh += n * rate / SR;
   if (lfoPh >= 1) {  // new cycle: S&H and DRIFT pick their next random value
     lfoPh -= floorf(lfoPh);
     lfoA = lfoB;
     lfoB = rnd();
   }
-  float t = lfoPh;
+  // No jumps: the saw's reset, the square's edges and the S&H's steps each take at
+  // least ~120 ms and 15% of the cycle (w; more of it at fast rates), or they click.
+  float t = lfoPh, w = clampf(0.12f * rate, 0.15f, 0.5f), u = fminf(t / w, 1);
   src[S_LFO] = P.lfo == L_TRI ? 1 - 4 * fabsf(t - 0.5f)
-             : P.lfo == L_SAW ? 1 - 2 * t
-             : P.lfo == L_SQR ? (t < 0.5f ? 1 : -1)
-             : P.lfo == L_SH ? lfoB
+             : P.lfo == L_SAW ? (t < 1 - w ? 1 - 2 * t / (1 - w) : -sinT((t - (1 - w)) / w * 0.5f + 0.25f))
+             : P.lfo == L_SQR ? clampf(sinT(t) / (PI_F * w), -1, 1)
+             : P.lfo == L_SH ? lfoA + (lfoB - lfoA) * u * u * (3 - 2 * u)
              : P.lfo == L_DRIFT ? lfoA + (lfoB - lfoA) * t * t * (3 - 2 * t)
              : sinT(t);
   // CSI sources jump frame to frame: glide them so the drone swells instead of
@@ -431,10 +440,10 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
       // WIND: two broad bands wandering 256 Hz - 4 kHz on their own (not on the drone's
       // harmonics, or it whistles), blowing in gusts. SPREAD widens them.
       float bw = 0.6f + sp * 1.2f;
-      if (rnd() > 0.92f) gustT = 0.25f + 0.75f * fabsf(rnd());
-      gust += (gustT - gust) * 0.04f;
+      if (rnd() > 1 - 0.16f * bs) gustT = 0.25f + 0.75f * fabsf(rnd());
+      gust += (gustT - gust) * 0.04f * bs;
       for (int v = 0; v < 2; v++) {
-        windC[v] = clampf(windC[v] + rnd() * 0.06f, 8, 12);  // log2 Hz
+        windC[v] = clampf(windC[v] + rnd() * 0.06f * sqrtf(bs), 8, 12);  // log2 Hz
         float hz = exp2f(windC[v]), g = tanf(PI_F * hz / SR);
         fa1[v] = 1 / (1 + g * (g + bw)), fa2[v] = g * fa1[v], fa3[v] = g * fa2[v];
         fk[v] = gust * bw * 0.37f / sqrtf(bw * hz / SR);  // unity peak, level-matched across widths
@@ -454,7 +463,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
   }
 
   float fc = fminf(30 * exp2f(eff[P_CUTOFF] * 9.2f), SR * 0.42f);
-  cut += (fc - cut) * 0.3f;
+  cut += (fc - cut) * (1 - expf(-0.357f * bs));  // 0.3 per 512 samples
   float g = tanf(PI_F * cut / SR), k = 2 - 1.9f * eff[P_RESO];
   float a1 = 1 / (1 + g * (g + k)), a2 = g * a1, a3 = g * a2;
   float ng = eff[P_NOISE] * eff[P_NOISE] * 0.6f, level = eff[P_LEVEL];
@@ -463,8 +472,8 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
   // Unstable bit crusher (no sample-rate reduction): 14 bits down to 4, the depth
   // wandering about +-2 bits and now and then sputtering 3 bits lower, more so as CRUSH rises.
   float cr = eff[P_CRUSH];
-  crushWob = crushWob * 0.97f + rnd() * 0.35f;
-  float bits = 14 - cr * 10 + crushWob * cr * 1.5f - (rnd() > 1 - 0.06f * cr ? 3 : 0);
+  crushWob = crushWob * (1 - 0.03f * bs) + rnd() * 0.35f * sqrtf(bs);
+  float bits = 14 - cr * 10 + crushWob * cr * 1.5f - (rnd() > 1 - 0.06f * cr * bs ? 3 : 0);
   float q = exp2f(fmaxf(bits, 2.f)), iq = 1 / q;
   float ringInc = 8 * exp2f(eff[P_RING] * 8) / SR;
   float cw = eff[P_CHORUS] * 0.8f, choNorm = 1 / (1 + 0.5f * cw);

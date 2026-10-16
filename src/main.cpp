@@ -73,8 +73,8 @@ static int batt = -1;  // %, -1 = unknown
 constexpr uint32_t CAL_COUNTDOWN_MS = 5000;  // time to leave the room before the empty-room capture
 static uint32_t calAt = 0;                   // when the countdown ends (millis), 0 = no countdown
 static bool calibrating() { return calAt || csi.calLeft > 0; }
-constexpr uint32_t R_HOLD_MS = 3000;  // hold r this long to roll the mod matrix too
-static uint32_t rHeldAt = 0;          // when a press of r randomized the params, while it stays held
+constexpr uint32_t R_HOLD_MS = 3000;  // r: let go sooner for new params, hold this long for new mods only
+static uint32_t rHeldAt = 0;          // when r went down, while it's held and nothing has fired yet
 
 // u: undo, back through the patches from before big changes (randomize, load, notes, engine...).
 constexpr int UNDO_N = 8;
@@ -482,7 +482,7 @@ static void drawFooter() {
   cv.drawRightString(s, W - 3, 116);
   char hold[40] = "";  // r held: count down to the mod roll
   if (rHeldAt)
-    snprintf(hold, sizeof hold, "RANDOMIZED  hold for mods: %lu",
+    snprintf(hold, sizeof hold, "let go: params   hold: mods in %lu",
              (unsigned long)(R_HOLD_MS - min(R_HOLD_MS, (uint32_t)(millis() - rHeldAt)) + 999) / 1000);
   bool note = pending || millis() < toastUntil || *hold || syn.duck;
   bool idle = !playing && !overlay && !calibrating();  // pulse "ENTER play" while silent
@@ -806,11 +806,10 @@ static void randomize() {
     if (lo[i] >= 0) syn.pt.p[i] = lo[i] + (hi[i] - lo[i]) * u();
   // Shimmer is a strong colour: usually left out, otherwise just a touch.
   syn.pt.p[P_SHIMMER] = esp_random() % 4 ? 0 : 0.05f + 0.25f * u();
-  rHeldAt = millis();
   say("RANDOMIZED");
 }
 
-// Held r: new routings, depths and LFO shape. Drone-safe: no PITCH, LEVEL, NOISE,
+// Held r: new routings, depths and LFO shape only, params untouched. Drone-safe: no PITCH, LEVEL, NOISE,
 // CRUSH or SHIMMER targets, depths of 10-40 (mostly positive), about a quarter of slots off.
 static void randomizeMods() {
   remember();
@@ -824,7 +823,7 @@ static void randomizeMods() {
   }
   syn.pt.lfo = rnd(NLFO);
   page = PG_MATRIX;  // show the new routings
-  say("RANDOMIZED PARAMS + MODS");
+  say("RANDOMIZED MODS");
 }
 
 static void startCalibration() {
@@ -948,7 +947,7 @@ static void onKey(char c) {
       driftAt = millis() + 10000;
       say(drift ? "AUTO DRIFT: wanders the scale" : "AUTO DRIFT off");
       break;
-    case 'r': randomize(); break;
+    case 'r': rHeldAt = millis(); break;  // tap or hold decides on release / at R_HOLD_MS
     case 'p': {
       remember();
       P.voices = P.voices % 3 + 1;
@@ -991,10 +990,12 @@ static void serviceKeys() {
   auto& kb = M5Cardputer.Keyboard;
   uint32_t now = millis();
   if (kb.isChange()) {
+    char was = held;
     held = kb.isPressed() ? readKey() : 0;
+    if (was == 'r' && rHeldAt && !held) randomize();  // r let go before the hold fired: new params
     syn.duck = held == 'q';  // q: fade out while held, swell back on release
     repeatAt = now + 350;
-    rHeldAt = 0;  // any key change ends an r hold; a press of r that randomizes restarts it
+    rHeldAt = 0;  // any key change ends an r hold (another key cancels it); a press of r restarts it
     if (held) onKey(held);
   } else if (held == 'r' && rHeldAt && now - rHeldAt >= R_HOLD_MS) {
     rHeldAt = 0;

@@ -182,7 +182,7 @@ A note sets the drone's root in the current octave (`9` `0` change the octave). 
 | `[` `]` | root note down / up a semitone |
 | `9` `0` | octave down / up |
 | `k` | next scale: minor, major, dorian, phrygian, pentatonic, fifths, chromatic |
-| `r` | randomize params (pitch, noise and level stay put; shimmer usually stays out); **keep holding 3 s** (the footer counts down) to also randomize the modulation: every slot's source, param and depth, plus the LFO shape. The Matrix page then opens to show them. |
+| `r` | **tap**: randomize the params (pitch, noise and level stay put; shimmer usually stays out). **Hold 3 s** (the footer counts down): randomize only the modulation, every slot's source, param and depth plus the LFO shape, leaving the params alone. The Matrix page then opens to show them. |
 | `e` | calibrate the empty room (5 s countdown to leave, any key cancels) |
 | `w` then `1`–`8` | save (write) a preset to the SD card |
 | `l` then `1`–`8` | load a preset from the SD card |
