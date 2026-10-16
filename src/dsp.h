@@ -25,7 +25,7 @@ constexpr float PI_F = 3.14159265f;
 struct ModProfile { const char* name; float modTau, pitchTau; };
 static const ModProfile MOD_PROFILES[] = {{"SHARP", 0.15f, 0.15f}, {"NORMAL", 0.5f, 0.3f}, {"SMOOTH", 1.5f, 0.6f}, {"SLOW", 4.f, 1.5f}};
 constexpr int NPROFILE = sizeof MOD_PROFILES / sizeof *MOD_PROFILES;
-constexpr float PARAM_TAU = 0.15f;
+constexpr float PARAM_TAU = 0.15f, FADE_TAU = 1.2f;  // FADE: held q's fade out / swell back
 
 enum Engine { E_PWM, E_SAW, E_FM, E_ORGAN, E_WAVE, E_VOICE, E_NOISE, NENGINE };
 static const char* const ENGINE_NAME[NENGINE] = {"PWM", "SAW", "FM", "ORG", "WAVE", "VOICE", "NOISE"};
@@ -52,19 +52,26 @@ constexpr int NSLOT = 8;
 struct Slot { uint8_t src, dst; int8_t depth; };  // depth -100..100, 0 = off
 
 struct Patch {
-  uint8_t engine, root, octave, scale, fx, lfo, voices;  // voices: 1 root, 2 +fifth, 3 +sub
+  uint8_t engine, root, octave, scale, fx, lfo, voices, interval;  // voices: 1 root, 2 +interval, 3 +sub
   float p[NPARAM];
   Slot mod[NSLOT];
 };
 
 static const Patch DEFAULT_PATCH = {
-    E_PWM, 9, 2, 0, FX_CHORUS | FX_DELAY | FX_REVERB | FX_SHIMMER, L_SINE, 3,
+    E_PWM, 9, 2, 0, FX_CHORUS | FX_DELAY | FX_REVERB | FX_SHIMMER, L_SINE, 3, 0,
     {0.5f, 0.45f, 0.3f, 0.4f, 0.35f, 0.f, 0.3f, 0.7f, 0.2f, 0.f, 0.3f, 0.5f, 0.45f, 0.45f, 0.6f, 0.2f},
     {{S_MOT, P_CUTOFF, 35}, {S_PHS, P_TIMBRE, 25}, {S_MOT, P_SHIMMER, 30}, {S_MID, P_REVERB, 20},
      {S_RSSI, P_SPREAD, 15}, {S_LFO, P_CUTOFF, 10}, {S_HI, P_DFB, 20}, {S_LO, P_CHORUS, 20}},
 };
 
 static inline float lfoHz(float p) { return 0.02f * exp2f(p * 8); }  // LFO param -> 0.02..5 Hz
+
+// Voice 2's interval above the root. THIRD follows the scale: minor if it has one.
+enum Interval { I_FIFTH, I_FOURTH, I_OCTAVE, I_THIRD, NINTERVAL };
+static const char* const INTERVAL_NAME[NINTERVAL] = {"FIFTH", "FOURTH", "OCTAVE", "THIRD"};
+static inline int intervalSemis(int iv, uint16_t mask) {
+  return iv == I_FOURTH ? 5 : iv == I_OCTAVE ? 12 : iv == I_THIRD ? (mask >> 3 & 1 || !(mask >> 4 & 1) ? 3 : 4) : 7;
+}
 
 // Nearest semitone to s whose pitch class is in the scale.
 static inline int quantize(float s, uint16_t mask) {
@@ -79,8 +86,8 @@ static inline int quantize(float s, uint16_t mask) {
 
 // ── patch JSON (hand-rolled: the format is ours and flat) ────────────────────
 static int patchToJson(const Patch& p, char* out, int cap) {  // cap >= 512
-  int n = snprintf(out, cap, "{\"v\":2,\"engine\":%d,\"root\":%d,\"octave\":%d,\"scale\":%d,\"fx\":%d,\"lfo\":%d,\"voices\":%d,\n\"params\":[",
-                   p.engine, p.root, p.octave, p.scale, p.fx, p.lfo, p.voices);
+  int n = snprintf(out, cap, "{\"v\":2,\"engine\":%d,\"root\":%d,\"octave\":%d,\"scale\":%d,\"fx\":%d,\"lfo\":%d,\"voices\":%d,\"interval\":%d,\n\"params\":[",
+                   p.engine, p.root, p.octave, p.scale, p.fx, p.lfo, p.voices, p.interval);
   for (int i = 0; i < NPARAM; i++) n += snprintf(out + n, cap - n, "%s%.3f", i ? "," : "", p.p[i]);
   n += snprintf(out + n, cap - n, "],\n\"matrix\":[");
   for (int i = 0; i < NSLOT; i++)
@@ -110,13 +117,14 @@ static int clampInt(float v, int lo, int hi) { return v >= lo ? (v <= hi ? (int)
 // SD files are user-editable: every field is range-checked before use.
 static bool patchFromJson(const char* js, Patch& out) {
   static const char* const keys[5] = {"\"engine\"", "\"root\"", "\"octave\"", "\"scale\"", "\"fx\""};
-  float h[5], v[NPARAM], m[NSLOT * 3], lfo = 0, voices = 3;
+  float h[5], v[NPARAM], m[NSLOT * 3], lfo = 0, voices = 3, interval = 0;
   for (int i = 0; i < 5; i++)
     if (jsonNums(js, keys[i], &h[i], 1) != 1) return false;
   if (jsonNums(js, "\"params\"", v, NPARAM) != NPARAM) return false;
   if (jsonNums(js, "\"matrix\"", m, NSLOT * 3) != NSLOT * 3) return false;
   jsonNums(js, "\"lfo\"", &lfo, 1);  // optional: older presets lack these two
   jsonNums(js, "\"voices\"", &voices, 1);
+  jsonNums(js, "\"interval\"", &interval, 1);
   float ver = 1;  // format 2 gave shimmer its own FX bit; before, it came with the reverb
   jsonNums(js, "\"v\"", &ver, 1);
   Patch p;
@@ -128,6 +136,7 @@ static bool patchFromJson(const char* js, Patch& out) {
   if (ver < 2 && (p.fx & FX_REVERB)) p.fx |= FX_SHIMMER;
   p.lfo = clampInt(lfo, 0, NLFO - 1);
   p.voices = clampInt(voices, 1, 3);
+  p.interval = clampInt(interval, 0, NINTERVAL - 1);
   for (int i = 0; i < NPARAM; i++) p.p[i] = clamp01(v[i]);
   for (int i = 0; i < NSLOT; i++)
     p.mod[i] = {(uint8_t)clampInt(m[3 * i], 0, NSRC - 1), (uint8_t)clampInt(m[3 * i + 1], 0, NPARAM - 1),
@@ -185,6 +194,8 @@ struct Synth {
   float eff[NPARAM] = {};    // modulated values, shown by the UI
   float freq = 110;
   uint8_t profile = 2;  // MOD_PROFILES index, SMOOTH
+  bool freeze = false;  // hold the room's mods (and ORG's partials) where they are; the LFO keeps going
+  bool duck = false;    // fade the output down (slowly); false swells it back
 
   Synth() {
     for (int i = 0; i <= 1024; i++) SINT[i] = sinf(2 * PI_F * i / 1024);
@@ -225,7 +236,8 @@ struct Synth {
   float routeD[NSLOT];  // their depths, gliding
   float baseN = -1;  // root + octave as a gliding MIDI note (-1: not started)
   float baseS[NPARAM], modS[NSRC] = {}, lfoPh = 0, lfoA = 0, lfoB = 0, semis = 0, fade = 0, cut = 1000, ic1 = 0, ic2 = 0;
-  int engine = -1, curVoices = 3;
+  int engine = -1, curVoices = 3, curInterval = 0;
+  float outGain = 1;
   uint8_t fxOn = 0;
   uint32_t rng = 22222;
   float crushHeld = 0, ringPh = 0;
@@ -291,7 +303,8 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
   // twitching. The LFO gets a short glide that only rounds SQUARE and S&H edges.
   const ModProfile& mp = MOD_PROFILES[profile < NPROFILE ? profile : 2];
   float glide = n / (mp.modTau * SR), lfoGlide = fminf(n / (0.05f * SR), 1.f), pg = fminf(n / (PARAM_TAU * SR), 1.f);
-  for (int s = 0; s < NSRC; s++) modS[s] += (src[s] - modS[s]) * (s == S_LFO ? lfoGlide : glide);
+  for (int s = 0; s < NSRC; s++)
+    if (s == S_LFO || !freeze) modS[s] += (src[s] - modS[s]) * (s == S_LFO ? lfoGlide : glide);
   for (int i = 0; i < NPARAM; i++) eff[i] = baseS[i] += (P.p[i] - baseS[i]) * pg;
   // The matrix glides too: depths ramp, and a slot re-routed to another source or
   // param fades out on the old route before fading in on the new one.
@@ -305,13 +318,19 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
   }
   for (float& e : eff) e = clamp01(e);
 
-  // Engine or voice-count swap: fade out, switch, fade back in (oscillators
-  // appearing or vanishing mid-wave would click).
-  if ((P.engine != engine || P.voices != curVoices) && fade < 0.002f) {
+  // Engine, voice-count or interval swap: fade out, switch, fade back in
+  // (oscillators appearing, vanishing or jumping mid-wave would click).
+  bool same = P.engine == engine && P.voices == curVoices && P.interval == curInterval;
+  if (!same && fade < 0.002f) {
     engine = P.engine < NENGINE ? P.engine : 0;
     curVoices = P.voices;
+    curInterval = P.interval;
   }
-  float fadeTo = P.engine == engine && P.voices == curVoices ? 1.f : 0.f;
+  float fadeTo = same ? 1.f : 0.f;
+  // Slow fade (held q): ramp the output gain sample by sample.
+  float g0 = outGain;
+  outGain += ((duck ? 0.f : 1.f) - outGain) * fminf(n / (FADE_TAU * SR), 1.f);
+  float gStep = (outGain - g0) / n;
 
   // An FX switched on starts clean instead of replaying a stale buffer.
   uint8_t fx = P.fx, on = fx & ~fxOn;
@@ -330,7 +349,8 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
   baseN = baseN < 0 ? base : baseN + (base - baseN) * pitchGlide;
   float f0 = 440 * exp2f((baseN + semis - 69) / 12);
   freq = f0;
-  float fv[3] = {f0, f0 * 1.4983f, f0 * 0.5f};  // root, fifth, sub
+  float fv[3] = {f0, f0 * exp2f(intervalSemis(curInterval, SCALES[P.scale < NSCALE ? P.scale : 0].mask) / 12.f),
+                 f0 * 0.5f};  // root, interval (a fifth by default), sub
   float tb = eff[P_TIMBRE], sp = eff[P_SPREAD];
 
   float inc[16], idt[16], amp[16], pw[6], idx[3], minc[3], fa1[3], fa2[3], fa3[3], fk[3];
@@ -380,7 +400,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
         b /= s1 - s0;
         inc[k] = fv[v] * powf(h, 1 + sp * 0.12f) / SR;
         float t = inc[k] < 0.45f ? powf(h, -0.8f) * (1 - tb + tb * 1.6f * b) : 0;
-        partAmp[k] += (t - partAmp[k]) * glide;
+        if (!freeze) partAmp[k] += (t - partAmp[k]) * glide;
         amp[k] = partAmp[k];
         sum += amp[k];
       }
@@ -653,6 +673,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
       }
       x = x * (1 - 0.35f * rev) + acc * rev;
     }
-    out[i] = (int16_t)(sat(x * level) * 30000);
+    out[i] = (int16_t)(sat(x * level) * 30000 * g0);
+    g0 += gStep;
   }
 }

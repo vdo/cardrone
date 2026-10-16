@@ -115,10 +115,19 @@ Press `1`–`7`. The sound fades over when you switch.
 Press `p` to choose how many tones the drone stacks:
 
 - **1**: just the root
-- **2**: root and the fifth above it, the classic open drone
-- **3**: root, fifth and an octave below (the default)
+- **2**: root and an interval above it: a fifth by default, the classic open drone
+- **3**: root, interval and an octave below (the default)
+
+Press `t` to change the interval: **fifth → fourth → octave → third**. The third follows your scale: minor in minor-type scales, major in major ones. The interval is saved with presets.
 
 Every engine follows this. ORG shares its 16 partials among the voices, so at 1 voice it is one rich tone and at 3 a chord. NOISE ignores voices except metal, which rings at each voice's pitch. Fewer voices also leaves the synth more headroom (lower `DSP %`). The voice count is saved with presets.
+
+### Performing
+
+- **Freeze** (`f`): the room stops steering. Every room-driven modulation holds exactly where it is, and ORG's partials stop following the WiFi shape; the LFO keeps moving. The footer's `MOT` turns into an amber `FRZ`. Press `f` again to let the room back in. Handy when the room lands on a sound you love.
+- **Auto drift** (`a`): the drone wanders by itself. Every 20–60 seconds the root glides to another note of the scale within a fifth of where you started; movement in the room makes it wander sooner. A `~` after the scale in the header shows it's on. Playing a note re-centers it.
+- **Slow fade** (hold `q`): the drone fades out over a few seconds; let go and it swells back.
+- **Undo** (`u`): steps back through the last 8 big changes: randomize (and the held mod roll), preset loads, notes, root and octave, scale, engine, voices, interval and effect switches. Small param nudges aren't recorded.
 
 ## Params
 
@@ -159,6 +168,13 @@ A note sets the drone's root in the current octave (`9` `0` change the octave). 
 | **Space** | play / stop, on any page |
 | `z x c v b n m` | white notes C D E F G A B: the drone moves to that root in the current octave |
 | `s d g h j` | black notes C# D# F# G# A# |
+| **Shift** + note | the note an octave up; the next plain note drops back |
+| `t` | interval: what voice 2 adds (see Voices) |
+| `a` | auto drift on/off (see below) |
+| `f` | freeze on/off (see below) |
+| hold `q` | fade out slowly; let go to swell back |
+| `u` | undo |
+| **Fn** + `1`–`7` | switch an effect on or off from any page: 1 drive, 2 crush, 3 ring, 4 chorus, 5 delay, 6 reverb, 7 shimmer |
 | **Enter** | on Params and Matrix it edits; elsewhere play / stop |
 | **Tab** | next page |
 | `1`–`7` | engine |

@@ -75,6 +75,22 @@ static uint32_t calAt = 0;                   // when the countdown ends (millis)
 static bool calibrating() { return calAt || csi.calLeft > 0; }
 constexpr uint32_t R_HOLD_MS = 3000;  // hold r this long to roll the mod matrix too
 static uint32_t rHeldAt = 0;          // when a press of r randomized the params, while it stays held
+
+// u: undo, back through the patches from before big changes (randomize, load, notes, engine...).
+constexpr int UNDO_N = 8;
+static Patch undoBuf[UNDO_N];
+static int undoN = 0;
+static void remember() {
+  if (undoN && !memcmp(&undoBuf[undoN - 1], &syn.pt, sizeof(Patch))) return;  // nothing new to keep
+  if (undoN == UNDO_N) memmove(undoBuf, undoBuf + 1, sizeof(Patch) * --undoN);
+  undoBuf[undoN++] = syn.pt;
+}
+static int curNote() { return 12 * (syn.pt.octave + 1) + syn.pt.root; }
+// a: auto drift. The root wanders among the scale's notes within a fifth of home.
+static bool drift = false;
+static uint32_t driftAt = 0;
+static int driftHome = 0;   // a note number, as curNote()
+static bool upOct = false;  // the last note was Shift+note: one octave above the octave setting
 static uint8_t wf[WF_ROWS][NSC];
 static int wfHead = 0, histHead = 0;
 static float motHist[HIST], srcPeak[NSRC], barPeak[NSC];
@@ -271,7 +287,7 @@ static void drawHeader() {
   cv.setTextColor(C_BG);
   cv.drawString(en, 58, 2);
   char s[24];
-  snprintf(s, sizeof s, "%s%d %s", NOTE_NAME[P.root], P.octave, SCALES[P.scale].name);
+  snprintf(s, sizeof s, "%s%d %s%s", NOTE_NAME[P.root], P.octave, SCALES[P.scale].name, drift ? "~" : "");
   cv.setTextColor(C_HI);
   cv.drawString(s, 60 + ew, 2);
   const char tag = "-JLA"[netMode];  // network mode, then channel
@@ -377,18 +393,19 @@ static void drawMatrix() {
 }
 
 static void drawHelp() {
-  static const char* const K[][2] = {
-      {"SPC", "play / stop"},  {"z-m", "white notes"},     {"s-j", "black notes"},    {"1-7", "drone engine"},
-      {"p", "voices 1-3"},     {"9 0", "octave"},          {"[ ]", "root -/+"},       {"k", "scale"},
-      {"r", "rnd; hold: mods"}, {"e", "calibrate room"},   {"TAB", "next page"},      {";.", "up / down"},
-      {",/", "adjust"},        {"ENT", "edit / play"},     {"DEL", "clear mod slot"}, {"w l", "save/load 1-8"},
-      {"- =", "volume"},       {"`", "options+network"},   {"i", "this help"}};
+  static const char* const K[][2] = {  // three columns of nine: keys <= 3 chars, notes <= 9
+      {"SPC", "play/stop"}, {"z-m", "notes"},     {"s-j", "sharps"},    {"SH", "note +8va"}, {"1-7", "engine"},
+      {"p", "voices"},      {"t", "interval"},    {"9 0", "octave"},    {"[ ]", "root -/+"}, {"k", "scale"},
+      {"a", "drift"},       {"f", "freeze"},      {"q", "hold:fade"},   {"u", "undo"},       {"r", "rnd/hold"},
+      {"e", "calibrate"},   {"TAB", "page"},      {";.", "up/down"},    {",/", "adjust"},    {"ENT", "edit/play"},
+      {"DEL", "clr slot"},  {"Fn", "+1-7: fx"},   {"w l", "save/load"}, {"- =", "volume"},   {"`", "options"},
+      {"i", "help"}};
   for (int i = 0; i < (int)(sizeof K / sizeof *K); i++) {
-    int x = 6 + (i / 10) * 120, y = 14 + (i % 10) * 10;
+    int x = 1 + (i / 9) * 80, y = 15 + (i % 9) * 11;
     cv.setTextColor(C_HI);
     cv.drawString(K[i][0], x, y);
     cv.setTextColor(C_MID);
-    cv.drawString(K[i][1], x + 24, y);
+    cv.drawString(K[i][1], x + 21, y);
   }
 }
 
@@ -451,8 +468,8 @@ static void drawCalibration() {
 
 static void drawFooter() {
   cv.drawFastHLine(0, 113, W, C_MID);
-  cv.setTextColor(C_DIM);
-  cv.drawString("MOT", 3, 116);
+  cv.setTextColor(syn.freeze ? C_WARN : C_DIM);
+  cv.drawString(syn.freeze ? "FRZ" : "MOT", 3, 116);
   for (int i = 0; i < HIST; i++) {  // oldest -> newest, older is dimmer
     int h = 1 + (int)(motHist[(histHead + i) % HIST] * 8);
     cv.drawFastVLine(24 + i * 2, 124 - h, h, ramp[6 + i * 25 / HIST]);
@@ -467,11 +484,12 @@ static void drawFooter() {
   if (rHeldAt)
     snprintf(hold, sizeof hold, "RANDOMIZED  hold for mods: %lu",
              (unsigned long)(R_HOLD_MS - min(R_HOLD_MS, (uint32_t)(millis() - rHeldAt)) + 999) / 1000);
-  bool note = pending || millis() < toastUntil || *hold;
+  bool note = pending || millis() < toastUntil || *hold || syn.duck;
   bool idle = !playing && !overlay && !calibrating();  // pulse "ENTER play" while silent
   cv.setTextColor(note ? C_WARN : idle && millis() / 500 % 2 ? C_HI : C_DIM);
   cv.drawString(pending == 'w'              ? "SAVE to slot 1-8 (other key cancels)"
                 : pending                   ? "LOAD slot 1-8 (other key cancels)"
+                : syn.duck                  ? "FADING OUT  release q to swell back"
                 : *hold                     ? hold
                 : note                      ? toast
                 : calibrating()             ? "any key cancels"
@@ -499,7 +517,9 @@ static void draw() {
 // ── blocking network screens (the drone keeps playing on core 1) ────────────
 static char readKey() {  // special keys as control chars
   auto ks = M5Cardputer.Keyboard.keysState();
-  return ks.tab ? '\t' : ks.enter ? '\n' : ks.del ? '\b' : ks.word.empty() ? 0 : ks.word.back();
+  char w = ks.word.empty() ? 0 : ks.word.back();
+  if (ks.fn && w >= '1' && w <= '7') return 0x10 + (w - '0');  // Fn + 1-7: 0x11-0x17, FX switches
+  return ks.tab ? '\t' : ks.enter ? '\n' : ks.del ? '\b' : w;
 }
 
 static char waitKey() {
@@ -747,7 +767,10 @@ static bool loadPreset(int slot) {
   f.close();
   Patch p;
   if (!patchFromJson(js, p)) return false;
+  remember();
   syn.pt = p;
+  upOct = false;
+  driftHome = curNote();
   return true;
 }
 
@@ -775,6 +798,7 @@ static void saveByte(const char* key, uint8_t v) {  // device settings in NVS
 
 // New params in drone-friendly ranges; PITCH, NOISE and LEVEL stay put (lo < 0).
 static void randomize() {
+  remember();
   static const float lo[NPARAM] = {-1, .25f, 0, 0, 0, -1, 0, -1, 0, 0, 0, .2f, .1f, .1f, .3f, -1};
   static const float hi[NPARAM] = {0, .7f, .6f, 1, .7f, 0, .6f, 0, .5f, .25f, .5f, .9f, .9f, .7f, .9f, 0};
   auto u = [] { return (esp_random() >> 8) * (1 / 16777216.f); };  // 0..1
@@ -789,6 +813,7 @@ static void randomize() {
 // Held r: new routings, depths and LFO shape. Drone-safe: no PITCH, LEVEL, NOISE,
 // CRUSH or SHIMMER targets, depths of 10-40 (mostly positive), about a quarter of slots off.
 static void randomizeMods() {
+  remember();
   static const uint8_t DST[] = {P_CUTOFF, P_RESO, P_TIMBRE, P_SPREAD, P_LFO,  P_DRIVE,
                                 P_RING,   P_CHORUS, P_DTIME, P_DFB,   P_REVERB};  // never SHIMMER
   auto rnd = [](int n) { return (int)(esp_random() % n); };
@@ -855,9 +880,18 @@ static void onKey(char c) {
     snprintf(s, sizeof s, "%s %c %s", save ? "SAVE" : "LOAD", c, ok ? "ok" : "FAILED (SD card?)");
     return say(s);
   }
-  static const char NOTE_KEYS[] = "zsxdcvgbhnjm";  // piano on the bottom rows: index = semitone above C
-  if (const char* k = c ? strchr(NOTE_KEYS, c) : nullptr) {
-    P.root = k - NOTE_KEYS;
+  // Piano on the bottom rows (index = semitone above C); with Shift, an octave up.
+  static const char NOTE_KEYS[] = "zsxdcvgbhnjm", NOTE_KEYS_UP[] = "ZSXDCVGBHNJM";
+  const char *k = c ? strchr(NOTE_KEYS, c) : nullptr, *ku = c ? strchr(NOTE_KEYS_UP, c) : nullptr;
+  if (k || ku) {
+    remember();
+    bool up = ku;
+    if (up != upOct && P.octave + (up ? 1 : -1) >= 0 && P.octave + (up ? 1 : -1) <= 5) {
+      P.octave += up ? 1 : -1;  // a Shift+note lifts the octave; the next plain note drops it back
+      upOct = up;
+    }
+    P.root = up ? ku - NOTE_KEYS_UP : k - NOTE_KEYS;
+    driftHome = curNote();
     playing = true;  // a note while stopped starts the drone on it
     return;
   }
@@ -872,19 +906,71 @@ static void onKey(char c) {
     case '\b': if (page == PG_MATRIX) P.mod[mRow].depth = 0; break;
     case 'i': overlay = OV_HELP; break;
     case '`': overlay = OV_OPTIONS; break;
-    case '1': case '2': case '3': case '4': case '5': case '6': case '7': P.engine = c - '1'; break;
-    case 'r': randomize(); break;
-    case 'p': {
-      static const char* const DESC[3] = {"VOICES 1: root", "VOICES 2: root + fifth", "VOICES 3: root + fifth + sub"};
-      P.voices = P.voices % 3 + 1;
-      say(DESC[P.voices - 1]);
+    case '1': case '2': case '3': case '4': case '5': case '6': case '7':
+      remember();
+      P.engine = c - '1';
+      break;
+    case 0x11: case 0x12: case 0x13: case 0x14: case 0x15: case 0x16: case 0x17: {  // Fn + 1-7
+      static const char* const FXN[7] = {"DRIVE", "CRUSH", "RING", "CHORUS", "DELAY", "REVERB", "SHIMMER"};
+      int b = c - 0x11;
+      remember();
+      P.fx ^= 1 << b;
+      char s[24];
+      snprintf(s, sizeof s, "%s %s", FXN[b], P.fx >> b & 1 ? "on" : "off");
+      say(s);
       break;
     }
-    case '[': P.root = (P.root + 11) % 12; break;
-    case ']': P.root = (P.root + 1) % 12; break;
-    case '9': if (P.octave > 0) P.octave--; break;
-    case '0': if (P.octave < 5) P.octave++; break;
-    case 'k': P.scale = (P.scale + 1) % NSCALE; break;
+    case 'u':
+      if (!undoN) {
+        say("nothing to undo");
+        break;
+      }
+      P = undoBuf[--undoN];
+      upOct = false;
+      driftHome = curNote();
+      say("UNDO");
+      break;
+    case 'f':
+      syn.freeze = !syn.freeze;
+      say(syn.freeze ? "FROZEN: the room stops steering" : "UNFROZEN");
+      break;
+    case 't': {
+      remember();
+      P.interval = (P.interval + 1) % NINTERVAL;
+      char s[32];
+      snprintf(s, sizeof s, "INTERVAL: %s (voice 2)", INTERVAL_NAME[P.interval]);
+      say(s);
+      break;
+    }
+    case 'a':
+      drift = !drift;
+      driftHome = curNote();
+      driftAt = millis() + 10000;
+      say(drift ? "AUTO DRIFT: wanders the scale" : "AUTO DRIFT off");
+      break;
+    case 'r': randomize(); break;
+    case 'p': {
+      remember();
+      P.voices = P.voices % 3 + 1;
+      char s[40];
+      snprintf(s, sizeof s, "VOICES %d: root%s%s%s", P.voices, P.voices > 1 ? " + " : "",
+               P.voices > 1 ? INTERVAL_NAME[P.interval] : "", P.voices > 2 ? " + sub" : "");
+      say(s);
+      break;
+    }
+    case '[': case ']': case '9': case '0':
+      remember();
+      if (c == '[') P.root = (P.root + 11) % 12;
+      if (c == ']') P.root = (P.root + 1) % 12;
+      if (c == '9' && P.octave > 0) P.octave--;
+      if (c == '0' && P.octave < 5) P.octave++;
+      upOct = false;
+      driftHome = curNote();
+      break;
+    case 'k':
+      remember();
+      P.scale = (P.scale + 1) % NSCALE;
+      break;
     case 'e': startCalibration(); break;
     case 'w': case 'l': pending = c; break;
     case '-': case '=':
@@ -906,6 +992,7 @@ static void serviceKeys() {
   uint32_t now = millis();
   if (kb.isChange()) {
     held = kb.isPressed() ? readKey() : 0;
+    syn.duck = held == 'q';  // q: fade out while held, swell back on release
     repeatAt = now + 350;
     rHeldAt = 0;  // any key change ends an r hold; a press of r that randomizes restarts it
     if (held) onKey(held);
@@ -989,6 +1076,19 @@ void loop() {
     for (int k = 0; k < NSC; k++) wf[wfHead][k] = (uint8_t)(clamp01(csi.prof[k]) * 31);
     motHist[histHead] = csi.src[S_MOT];
     histHead = (histHead + 1) % HIST;
+  }
+  if (drift && playing && now >= driftAt) {  // auto drift: step to another scale note near home
+    uint16_t mask = SCALES[syn.pt.scale].mask;
+    int pick[15], np = 0;
+    for (int d = -7; d <= 7; d++) {
+      int note = driftHome + d;
+      if ((mask >> ((d + 12) % 12) & 1) && note != curNote() && note >= 12 && note <= 83) pick[np++] = note;
+    }
+    if (np) {
+      int note = pick[esp_random() % np];
+      syn.pt.octave = note / 12 - 1, syn.pt.root = note % 12, upOct = false;
+    }
+    driftAt = now + (uint32_t)((20000 + esp_random() % 40000) * (1 - 0.6f * clamp01(csi.src[S_MOT])));  // movement hurries it
   }
   if (calAt && millis() >= calAt) {  // countdown over: capture the empty room
     calAt = 0;

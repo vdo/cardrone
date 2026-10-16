@@ -53,7 +53,11 @@ int main(int argc, char** argv) {
   assert(patchFromJson(js, q));
   assert(q.engine == p.engine && q.fx == p.fx && q.mod[2].depth == -40 && q.mod[3].dst == P_REVERB);
   assert(fabsf(q.p[P_TIMBRE] - 0.123f) < 1e-3f);
-  assert(q.lfo == p.lfo && q.voices == p.voices);
+  assert(q.lfo == p.lfo && q.voices == p.voices && q.interval == p.interval);
+  p.interval = I_THIRD;
+  patchToJson(p, js, sizeof js);
+  assert(patchFromJson(js, q) && q.interval == I_THIRD);
+  assert(intervalSemis(I_THIRD, SCALES[0].mask) == 3 && intervalSemis(I_THIRD, SCALES[1].mask) == 4);  // minor, major
   p.fx = FX_REVERB;  // shimmer switched off survives a round trip...
   patchToJson(p, js, sizeof js);
   assert(patchFromJson(js, q) && q.fx == FX_REVERB);
@@ -129,6 +133,34 @@ int main(int argc, char** argv) {
     assert(syn.freq > 100);  // one block in: still near A
     for (int i = 0; i < 400; i++) syn.render(pcm, 512, src0, flat);
     assert(fabsf(syn.freq - 82.41f) < 0.5f);
+  }
+
+  // Freeze holds the room's mods; the slow fade goes quiet and swells back.
+  {
+    syn.pt = DEFAULT_PATCH;
+    float src1[NSRC] = {}, src0[NSRC] = {}, flat[NSC];
+    src1[S_MOT] = 1;
+    for (float& f : flat) f = 0.5f;
+    for (int i = 0; i < 600; i++) syn.render(pcm, 512, src1, flat);
+    float held = syn.eff[P_SHIMMER];  // MOT-driven only (the LFO, which freeze leaves running, steers CUTOFF)
+    syn.freeze = true;
+    for (int i = 0; i < 600; i++) syn.render(pcm, 512, src0, flat);  // the room goes still...
+    assert(held > 0.4f && fabsf(syn.eff[P_SHIMMER] - held) < 0.01f);  // ...but the mods stay put
+    syn.freeze = false;
+    auto rms = [&](int blocks) {
+      double sq = 0;
+      for (int i = 0; i < blocks; i++) {
+        syn.render(pcm, 512, src0, flat);
+        for (int j = 0; j < 512; j++) sq += (double)pcm[j] * pcm[j];
+      }
+      return sqrt(sq / (blocks * 512)) / 32767;
+    };
+    syn.duck = true;
+    rms(600);
+    assert(rms(50) < 0.005);
+    syn.duck = false;
+    rms(600);
+    assert(rms(50) > 0.05);
   }
 
   // Analog drive: a pushed pure tone grows a 2nd harmonic (tube-like bias), not just odd ones.

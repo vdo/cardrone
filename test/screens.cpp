@@ -118,7 +118,7 @@ struct M5Canvas {
   void drawCenterString(const char* s, int x, int y) { drawString(s, x - textWidth(s) / 2, y); }
   void drawRightString(const char* s, int x, int y) { drawString(s, x - textWidth(s), y); }
 };
-struct KeysState { bool tab, enter, del; std::vector<char> word; };
+struct KeysState { bool tab, enter, del, fn; std::vector<char> word; };
 static struct {
   struct { void setRotation(int) {} } Display;
   struct Spk {

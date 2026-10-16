@@ -52,9 +52,16 @@ Nothing sounds until `Space` (play). On the ADV, plugging headphones into the ja
 | `Space` | play / stop on any page (fades, resumes where it left off) |
 | `z x c v b n m` | white notes C D E F G A B: set the drone's root in the current octave (it glides there; a note while stopped starts playing) |
 | `s d g h j` | black notes C# D# F# G# A# |
+| `Shift` + note | the note an octave up; the next plain note drops back |
+| `t` | interval of voice 2: fifth → fourth → octave → third (minor or major, from the scale) |
+| `a` | auto drift: the root wanders among nearby scale notes every 20–60 s, faster when the room moves (`~` after the scale) |
+| `f` | freeze: the room's mods hold where they are (footer shows `FRZ`); the LFO keeps moving |
+| hold `q` | fade the drone out slowly; release to swell back |
+| `u` | undo: back through randomize, preset loads, notes, engine, voices, interval and effect switches (8 steps) |
+| `Fn` + `1`–`7` | effect on/off from any page: drive, crush, ring, chorus, delay, reverb, shimmer |
 | `Tab` | page: Waterfall → Bars → Params → Matrix |
 | `1`–`7` | engine: PWM, SAW (supersaw), FM (bell), ORG (subcarrier additive organ), WAVE (wavetable), VOICE (formant choir), NOISE (dust, wind, surf, static, metal) |
-| `p` | voices: 1 (root), 2 (+ fifth), 3 (+ sub) |
+| `p` | voices: 1 (root), 2 (+ interval, a fifth by default), 3 (+ sub) |
 | `r` | randomize params in drone-friendly ranges (pitch, noise and level stay put, shimmer only now and then); keep holding 3 s (the footer counts down) to also randomize the mod matrix (sources, destinations, depths) and the LFO shape, then the Matrix page opens |
 | `[` `]` | root note down / up a semitone |
 | `9` `0` | octave down / up |
