@@ -165,6 +165,7 @@ static DSP_AI float wrap1(float p) { return p >= 1 ? p - 1 : p; }
 // The tape is stored at half rate to pay for it (its repeats are darkened anyway).
 constexpr int DLY_N = SR * 45 / 100 / 2;  // 0.45 s tape, one slot per 2 samples
 constexpr int CHO_N = 1024, SHM_N = 1024;
+constexpr float SHIM_CEIL = 1.1f;  // reverb's share of the mix (REVERB x wet/dry) the shimmer loop is held under; healthy peaks ~1.06
 constexpr int WT_F = 8, WT_N = 256;  // wavetable: frames x samples
 static int16_t WT[WT_F][WT_N];
 // Formants (Hz) of a bass voice singing a, e, i, o, u.
@@ -220,7 +221,7 @@ struct Synth {
   bool dlyOdd = false;
   float dlyS = 0, dlyLp = 0, dlyAcc = 0, wowPh = 0, flutPh = 0;
   float rvb[RVB_N] = {};
-  float combLp[6] = {}, shm[SHM_N] = {}, shmPh = 0, shimOut = 0;
+  float combLp[6] = {}, shm[SHM_N] = {}, shmPh = 0, shimOut = 0, shimLp = 0, wetEnv = 0, dryEnv = 0;
   int ci[6] = {}, ai[3] = {}, shmW = 0;
 
   float dlyTarget() const { return (0.04f + eff[P_DTIME] * 0.38f) * SR; }
@@ -289,7 +290,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
   fxOn = fx;
   if (on & FX_DELAY) { memset(dly, 0, sizeof dly); dlyS = dlyTarget(); }
   if (on & FX_CHORUS) memset(cho, 0, sizeof cho);
-  if (on & FX_REVERB) { memset(rvb, 0, sizeof rvb); memset(shm, 0, sizeof shm); shimOut = 0; }
+  if (on & FX_REVERB) { memset(rvb, 0, sizeof rvb); memset(shm, 0, sizeof shm); shimOut = shimLp = wetEnv = dryEnv = 0; }
 
   // Pitch: quantised to the scale, then glided.
   float target = quantize((eff[P_PITCH] - 0.5f) * 24, SCALES[P.scale < NSCALE ? P.scale : 0].mask);
@@ -393,6 +394,14 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
   float cw = eff[P_CHORUS] * 0.8f, choNorm = 1 / (1 + 0.5f * cw);
   float dT = dlyTarget(), dfb = eff[P_DFB] * 0.92f;
   float rev = eff[P_REVERB], rfb = 0.78f + 0.195f * rev, shim = eff[P_SHIMMER] * 0.6f;
+  // A longer decay piles up more energy: scale the input to keep the tail's level
+  // steady (unchanged at the default REVERB 0.6), or high REVERB swamps the mix.
+  float rin = 0.02f * sqrtf((1 - rfb * rfb) / (1 - 0.897f * 0.897f));
+  // Shimmer feeds the reverb its own octave-up; on a held drone the resonances
+  // can push that loop past unity. Once the reverb's share of the mix outgrows a
+  // healthy level, the feedback backs off: it blooms instead of running into clipped fizz.
+  float share = rev * wetEnv / (dryEnv + 1e-4f), over = share > SHIM_CEIL ? SHIM_CEIL / share : 1;
+  float shimG = shim * over * over * over * over;  // steep: a hot loop settles just above the ceiling
 
   // Chorus sweep and tape wow/flutter are slow: evaluate at the block edges, ramp between.
   auto choD = [&](float ph, float base) { return SR * (base + 0.005f * cw * (1 + sinT(ph))); };
@@ -518,7 +527,8 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
     }
     wob += wobS;
     if (fx & FX_REVERB) {  // mono Freeverb + octave-up shimmer fed back into it
-      float in = (x + shimOut * shim) * 0.02f, acc = 0;
+      float in = (x + shimOut * shimG) * rin, acc = 0;
+      dryEnv += (fabsf(x) - dryEnv) * 0.0005f;
       float* b = rvb;
       for (int c = 0; c < 6; c++) {
         float y = b[ci[c]];
@@ -536,7 +546,13 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
         b += AP_LEN[a];
       }
       acc *= 3;
-      shimOut = shim > 0.001f ? sat(octaveUp(acc)) : 0;
+      wetEnv += (fabsf(acc) - wetEnv) * 0.0005f;
+      if (shim > 0.001f) {
+        shimLp += (acc - shimLp) * 0.5f;  // ~4 kHz: an octave up stays under Nyquist, no aliased fizz
+        shimOut = sat(octaveUp(shimLp));
+      } else {
+        shimOut = 0;
+      }
       x = x * (1 - 0.35f * rev) + acc * rev;
     }
     out[i] = (int16_t)(sat(x * level) * 30000);

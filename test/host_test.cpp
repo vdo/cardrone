@@ -93,6 +93,23 @@ int main(int argc, char** argv) {
     assert(fabsf(c.fast[DC_L] - c.fast[DC_L - 1]) < 1e-3f && fabsf(c.fast[DC_R] - c.fast[DC_R + 1]) < 1e-3f);
   }
 
+  // REVERB and SHIMMER maxed on a held drone: the shimmer loop must bloom, not run away and pin.
+  {
+    syn.pt = DEFAULT_PATCH;
+    syn.pt.p[P_REVERB] = syn.pt.p[P_SHIMMER] = 1;
+    for (auto& s : syn.pt.mod) s.depth = 0;
+    float src0[NSRC] = {}, flat[NSC];
+    for (float& v : flat) v = 0.5f;
+    long pinned = 0;
+    for (int i = 0; i < SR * 20; i += 512) {
+      syn.render(pcm, 512, src0, flat);
+      if (i > SR * 10)
+        for (int j = 0; j < 512; j++) pinned += abs(pcm[j]) >= 29900;
+    }
+    printf("reverb+shimmer maxed: %.2f%% of samples at the clipper\n", 100.0 * pinned / (SR * 10));
+    assert(pinned < SR * 10 / 100);
+  }
+
   // Every engine with every FX and swinging sources: finite, audible, not pinned.
   float src[NSRC] = {}, prof[NSC];
   for (int e = 0; e < NENGINE; e++) {
