@@ -240,8 +240,7 @@ struct Synth {
   float outGain = 1;
   uint8_t fxOn = 0;
   uint32_t rng = 22222;
-  float crushHeld = 0, ringPh = 0;
-  int crushCnt = 0;
+  float crushWob = 0, ringPh = 0;  // crusher: wandering bit depth
   float cho[CHO_N] = {}, choPh = 0;
   int choW = 0;
   int16_t dly[DLY_N] = {};
@@ -461,9 +460,12 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
   float ng = eff[P_NOISE] * eff[P_NOISE] * 0.6f, level = eff[P_LEVEL];
   float dg = 1 + eff[P_DRIVE] * 8, dm = 1 - eff[P_DRIVE] * 0.45f;
   float dBias = 0.3f * eff[P_DRIVE], dOff = sat(dBias), dLp = 1 - expf(-2 * PI_F * (7000 - 4500 * eff[P_DRIVE]) / SR);
+  // Unstable bit crusher (no sample-rate reduction): 14 bits down to 4, the depth
+  // wandering about +-2 bits and now and then sputtering 3 bits lower, more so as CRUSH rises.
   float cr = eff[P_CRUSH];
-  int hold = 1 + (int)(cr * cr * 24);
-  float q = exp2f(14 - cr * 10), iq = 1 / q;
+  crushWob = crushWob * 0.97f + rnd() * 0.35f;
+  float bits = 14 - cr * 10 + crushWob * cr * 1.5f - (rnd() > 1 - 0.06f * cr ? 3 : 0);
+  float q = exp2f(fmaxf(bits, 2.f)), iq = 1 / q;
   float ringInc = 8 * exp2f(eff[P_RING] * 8) / SR;
   float cw = eff[P_CHORUS] * 0.8f, choNorm = 1 / (1 + 0.5f * cw);
   float dT = dlyTarget(), dfb = eff[P_DFB] * 0.92f;
@@ -610,10 +612,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
       drvDc += (drvLp - drvDc) * 0.0015f;   // the bias leaves DC behind: block it (~10 Hz)
       x = (drvLp - drvDc) * dm;
     }
-    if (fx & FX_CRUSH) {
-      if (++crushCnt >= hold) { crushCnt = 0; crushHeld = (int)(x * q + (x < 0 ? -0.5f : 0.5f)) * iq; }
-      x = crushHeld;
-    }
+    if (fx & FX_CRUSH) x = (int)(x * q + (x < 0 ? -0.5f : 0.5f)) * iq;
     if (fx & FX_RING) {
       ringPh = wrap1(ringPh + ringInc);
       x *= 0.35f + 0.65f * sinT(ringPh);

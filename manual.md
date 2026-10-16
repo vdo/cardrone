@@ -142,7 +142,7 @@ Every engine follows this. ORG shares its 16 partials among the voices, so at 1 
 | LFO | Speed of the internal LFO |
 | LEVEL | Output level of the drone |
 | DRIVE | Analog-style saturation: warm even harmonics like a tube, getting darker the harder you push it |
-| CRUSH | Lo-fi bit and sample-rate reduction |
+| CRUSH | Unstable bit crusher: fewer bits, with the depth wandering and sputtering like a failing converter (the more CRUSH, the less stable) |
 | RING | Ring modulation: metallic tremolo, from slow throb to clangorous |
 | CHORUS | Width and shimmer of the chorus |
 | D.TIME | Tape delay time (pitch bends when you change it, like real tape) |
