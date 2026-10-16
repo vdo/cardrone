@@ -334,7 +334,7 @@ static void drawParams() {
   const Patch& P = syn.pt;
   for (int i = 0; i < NPARAM; i++) {
     int x = 4 + (i / 8) * 118, y = 16 + (i % 8) * 12, bx = x + 40, bw = 52;
-    bool sel = i == pCur, off = PARAM_FX[i] && !(P.fx & PARAM_FX[i]);
+    bool sel = i == pCur, off = (PARAM_FX[i] && !(P.fx & PARAM_FX[i])) || (i == P_SHIMMER && !(P.fx & FX_REVERB));
     if (sel) cv.fillRect(x - 2, y - 2, 116, 12, C_BAR);
     cv.setTextColor(off ? C_DIM : sel ? C_HOT : C_MID);
     cv.drawString(PARAM_NAME[i], x, y);
@@ -776,19 +776,22 @@ static void saveByte(const char* key, uint8_t v) {  // device settings in NVS
 
 // New params in drone-friendly ranges; PITCH, NOISE and LEVEL stay put (lo < 0).
 static void randomize() {
-  static const float lo[NPARAM] = {-1, .25f, 0, 0, 0, -1, 0, -1, 0, 0, 0, .2f, .1f, .1f, .3f, 0};
-  static const float hi[NPARAM] = {0, .7f, .6f, 1, .7f, 0, .6f, 0, .5f, .25f, .5f, .9f, .9f, .7f, .9f, .5f};
+  static const float lo[NPARAM] = {-1, .25f, 0, 0, 0, -1, 0, -1, 0, 0, 0, .2f, .1f, .1f, .3f, -1};
+  static const float hi[NPARAM] = {0, .7f, .6f, 1, .7f, 0, .6f, 0, .5f, .25f, .5f, .9f, .9f, .7f, .9f, 0};
+  auto u = [] { return (esp_random() >> 8) * (1 / 16777216.f); };  // 0..1
   for (int i = 0; i < NPARAM; i++)
-    if (lo[i] >= 0) syn.pt.p[i] = lo[i] + (hi[i] - lo[i]) * (esp_random() >> 8) * (1 / 16777216.f);
+    if (lo[i] >= 0) syn.pt.p[i] = lo[i] + (hi[i] - lo[i]) * u();
+  // Shimmer is a strong colour: usually left out, otherwise just a touch.
+  syn.pt.p[P_SHIMMER] = esp_random() % 4 ? 0 : 0.05f + 0.25f * u();
   rHeldAt = millis();
   say("RANDOMIZED");
 }
 
-// Held r: new routings, depths and LFO shape. Drone-safe: no PITCH, LEVEL, NOISE
-// or CRUSH targets, depths of 10-40 (mostly positive), about a quarter of slots off.
+// Held r: new routings, depths and LFO shape. Drone-safe: no PITCH, LEVEL, NOISE,
+// CRUSH or SHIMMER targets, depths of 10-40 (mostly positive), about a quarter of slots off.
 static void randomizeMods() {
   static const uint8_t DST[] = {P_CUTOFF, P_RESO, P_TIMBRE, P_SPREAD, P_LFO,  P_DRIVE,
-                                P_RING,   P_CHORUS, P_DTIME, P_DFB,   P_REVERB, P_SHIMMER};
+                                P_RING,   P_CHORUS, P_DTIME, P_DFB,   P_REVERB};  // never SHIMMER
   auto rnd = [](int n) { return (int)(esp_random() % n); };
   for (Slot& s : syn.pt.mod) {
     s.src = rnd(NSRC);

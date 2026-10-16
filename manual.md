@@ -50,7 +50,7 @@ The sixteen sound controls. Each has a bar for its setting and a bright tick sho
 
 - `;` `.` select a param
 - `,` `/` turn it down or up (hold to sweep)
-- **Enter** (while playing) switches the selected param's effect on or off. Params of an effect that is off are greyed out and show `--`.
+- **Enter** (while playing) switches the selected param's effect on or off. Params of an effect that is off are greyed out and show `--`. SHIMMR has its own switch, separate from the reverb (it only sounds while the reverb is on).
 
 ### 4. Matrix (modulation)
 
@@ -139,7 +139,7 @@ Every engine follows this. ORG shares its 16 partials among the voices, so at 1 
 | D.TIME | Tape delay time (pitch bends when you change it, like real tape) |
 | D.FB | Tape delay feedback: how long the echoes keep repeating |
 | REVERB | Size and amount of the reverb |
-| SHIMMR | Octave-up shimmer fed into the reverb: an angelic halo |
+| SHIMMR | Octave-up shimmer fed into the reverb: an angelic halo. Its own on/off switch (Enter on this row) |
 
 Changes glide over a fraction of a second, so turning a knob, loading a preset or randomizing morphs instead of clicking.
 
@@ -154,7 +154,7 @@ Changes glide over a fraction of a second, so turning a knob, loading a preset o
 | `[` `]` | root note down / up |
 | `9` `0` | octave down / up |
 | `k` | next scale: minor, major, dorian, phrygian, pentatonic, fifths, chromatic |
-| `r` | randomize params (pitch, noise and level stay put); **keep holding 3 s** (the footer counts down) to also randomize the modulation: every slot's source, param and depth, plus the LFO shape. The Matrix page then opens to show them. |
+| `r` | randomize params (pitch, noise and level stay put; shimmer usually stays out); **keep holding 3 s** (the footer counts down) to also randomize the modulation: every slot's source, param and depth, plus the LFO shape. The Matrix page then opens to show them. |
 | `c` | calibrate the empty room (5 s countdown to leave, any key cancels) |
 | `s` then `1`–`8` | save a preset to the SD card |
 | `l` then `1`–`8` | load a preset from the SD card |

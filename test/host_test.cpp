@@ -54,6 +54,12 @@ int main(int argc, char** argv) {
   assert(q.engine == p.engine && q.fx == p.fx && q.mod[2].depth == -40 && q.mod[3].dst == P_REVERB);
   assert(fabsf(q.p[P_TIMBRE] - 0.123f) < 1e-3f);
   assert(q.lfo == p.lfo && q.voices == p.voices);
+  p.fx = FX_REVERB;  // shimmer switched off survives a round trip...
+  patchToJson(p, js, sizeof js);
+  assert(patchFromJson(js, q) && q.fx == FX_REVERB);
+  assert(patchFromJson("{\"engine\":1,\"root\":0,\"octave\":2,\"scale\":0,\"fx\":32,\"params\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"
+                       "\"matrix\":[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]}", q) &&
+         q.fx == (FX_REVERB | FX_SHIMMER));  // ...and a pre-switch preset with reverb keeps its shimmer
   assert(patchFromJson("{\"engine\":1,\"root\":0,\"octave\":2,\"scale\":0,\"fx\":0,\"params\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"
                        "\"matrix\":[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]}", q) && q.voices == 3);  // pre-voices preset
   assert(!patchFromJson("{\"engine\":1}", q));
@@ -61,7 +67,7 @@ int main(int argc, char** argv) {
       "{\"engine\":99,\"root\":-5,\"octave\":7,\"scale\":-nan,\"fx\":999,\"params\":[9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,-x9],"
       "\"matrix\":[[99,99,500],[0,0,-500],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1]]}";
   assert(patchFromJson(evil, q));
-  assert(q.engine < NENGINE && q.root == 0 && q.octave == 5 && q.scale == 0 && q.fx == 63);
+  assert(q.engine < NENGINE && q.root == 0 && q.octave == 5 && q.scale == 0 && q.fx == 127);
   assert(q.p[0] == 1 && q.p[15] == 1);  // "-x9" skips the '-' and reads 9
   assert(q.mod[0].src < NSRC && q.mod[0].dst < NPARAM && q.mod[0].depth == 100 && q.mod[1].depth == -100);
 

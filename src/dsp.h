@@ -37,10 +37,10 @@ enum Param { P_PITCH, P_CUTOFF, P_RESO, P_TIMBRE, P_SPREAD, P_NOISE, P_LFO, P_LE
              P_DRIVE, P_CRUSH, P_RING, P_CHORUS, P_DTIME, P_DFB, P_REVERB, P_SHIMMER, NPARAM };
 static const char* const PARAM_NAME[NPARAM] = {"PITCH", "CUTOFF", "RESO", "TIMBRE", "SPREAD", "NOISE", "LFO", "LEVEL",
                                               "DRIVE", "CRUSH", "RING", "CHORUS", "D.TIME", "D.FB", "REVERB", "SHIMMR"};
-enum Fx { FX_DRIVE = 1, FX_CRUSH = 2, FX_RING = 4, FX_CHORUS = 8, FX_DELAY = 16, FX_REVERB = 32 };
+enum Fx { FX_DRIVE = 1, FX_CRUSH = 2, FX_RING = 4, FX_CHORUS = 8, FX_DELAY = 16, FX_REVERB = 32, FX_SHIMMER = 64 };
 // Which FX switch each param belongs to (0 = voice param, always live).
 static const uint8_t PARAM_FX[NPARAM] = {0, 0, 0, 0, 0, 0, 0, 0,
-                                         FX_DRIVE, FX_CRUSH, FX_RING, FX_CHORUS, FX_DELAY, FX_DELAY, FX_REVERB, FX_REVERB};
+                                         FX_DRIVE, FX_CRUSH, FX_RING, FX_CHORUS, FX_DELAY, FX_DELAY, FX_REVERB, FX_SHIMMER};
 
 struct Scale { const char* name; uint16_t mask; };  // bit n = semitone n above root allowed
 static const Scale SCALES[] = {{"MINOR", 0x5AD}, {"MAJOR", 0xAB5}, {"DORIAN", 0x6AD}, {"PHRYG", 0x5AB},
@@ -58,7 +58,7 @@ struct Patch {
 };
 
 static const Patch DEFAULT_PATCH = {
-    E_PWM, 9, 2, 0, FX_CHORUS | FX_DELAY | FX_REVERB, L_SINE, 3,
+    E_PWM, 9, 2, 0, FX_CHORUS | FX_DELAY | FX_REVERB | FX_SHIMMER, L_SINE, 3,
     {0.5f, 0.45f, 0.3f, 0.4f, 0.35f, 0.f, 0.3f, 0.7f, 0.2f, 0.f, 0.3f, 0.5f, 0.45f, 0.45f, 0.6f, 0.2f},
     {{S_MOT, P_CUTOFF, 35}, {S_PHS, P_TIMBRE, 25}, {S_MOT, P_SHIMMER, 30}, {S_MID, P_REVERB, 20},
      {S_RSSI, P_SPREAD, 15}, {S_LFO, P_CUTOFF, 10}, {S_HI, P_DFB, 20}, {S_LO, P_CHORUS, 20}},
@@ -79,7 +79,7 @@ static inline int quantize(float s, uint16_t mask) {
 
 // ── patch JSON (hand-rolled: the format is ours and flat) ────────────────────
 static int patchToJson(const Patch& p, char* out, int cap) {  // cap >= 512
-  int n = snprintf(out, cap, "{\"engine\":%d,\"root\":%d,\"octave\":%d,\"scale\":%d,\"fx\":%d,\"lfo\":%d,\"voices\":%d,\n\"params\":[",
+  int n = snprintf(out, cap, "{\"v\":2,\"engine\":%d,\"root\":%d,\"octave\":%d,\"scale\":%d,\"fx\":%d,\"lfo\":%d,\"voices\":%d,\n\"params\":[",
                    p.engine, p.root, p.octave, p.scale, p.fx, p.lfo, p.voices);
   for (int i = 0; i < NPARAM; i++) n += snprintf(out + n, cap - n, "%s%.3f", i ? "," : "", p.p[i]);
   n += snprintf(out + n, cap - n, "],\n\"matrix\":[");
@@ -117,12 +117,15 @@ static bool patchFromJson(const char* js, Patch& out) {
   if (jsonNums(js, "\"matrix\"", m, NSLOT * 3) != NSLOT * 3) return false;
   jsonNums(js, "\"lfo\"", &lfo, 1);  // optional: older presets lack these two
   jsonNums(js, "\"voices\"", &voices, 1);
+  float ver = 1;  // format 2 gave shimmer its own FX bit; before, it came with the reverb
+  jsonNums(js, "\"v\"", &ver, 1);
   Patch p;
   p.engine = clampInt(h[0], 0, NENGINE - 1);
   p.root = clampInt(h[1], 0, 11);
   p.octave = clampInt(h[2], 0, 5);
   p.scale = clampInt(h[3], 0, NSCALE - 1);
-  p.fx = clampInt(h[4], 0, 63);
+  p.fx = clampInt(h[4], 0, 127);
+  if (ver < 2 && (p.fx & FX_REVERB)) p.fx |= FX_SHIMMER;
   p.lfo = clampInt(lfo, 0, NLFO - 1);
   p.voices = clampInt(voices, 1, 3);
   for (int i = 0; i < NPARAM; i++) p.p[i] = clamp01(v[i]);
@@ -314,7 +317,8 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
   fxOn = fx;
   if (on & FX_DELAY) { memset(dly, 0, sizeof dly); dlyS = dlyTarget(); }
   if (on & FX_CHORUS) memset(cho, 0, sizeof cho);
-  if (on & FX_REVERB) { memset(rvb, 0, sizeof rvb); memset(shm, 0, sizeof shm); shimOut = shimLp = wetEnv = dryEnv = 0; }
+  if (on & FX_REVERB) { memset(rvb, 0, sizeof rvb); wetEnv = dryEnv = 0; }
+  if (on & (FX_REVERB | FX_SHIMMER)) { memset(shm, 0, sizeof shm); shimOut = shimLp = 0; }
 
   // Pitch: quantised to the scale, then glided.
   float target = quantize((eff[P_PITCH] - 0.5f) * 24, SCALES[P.scale < NSCALE ? P.scale : 0].mask);
@@ -636,7 +640,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
       }
       acc *= 3;
       wetEnv += (fabsf(acc) - wetEnv) * 0.0005f;
-      if (shim > 0.001f) {
+      if ((fx & FX_SHIMMER) && shim > 0.001f) {
         shimLp += (acc - shimLp) * 0.5f;  // ~4 kHz: an octave up stays under Nyquist, no aliased fizz
         shimOut = sat(octaveUp(shimLp));
       } else {
