@@ -27,8 +27,8 @@ static const ModProfile MOD_PROFILES[] = {{"SHARP", 0.15f, 0.15f}, {"NORMAL", 0.
 constexpr int NPROFILE = sizeof MOD_PROFILES / sizeof *MOD_PROFILES;
 constexpr float PARAM_TAU = 0.15f;
 
-enum Engine { E_PWM, E_SAW, E_FM, E_RF, E_WAVE, E_VOX, E_SHEP, NENGINE };
-static const char* const ENGINE_NAME[NENGINE] = {"PWM", "SAW", "FM", "RF.ORG", "WAVE", "VOX", "SHEP"};
+enum Engine { E_PWM, E_SAW, E_FM, E_ORGAN, E_WAVE, E_VOICE, E_SHEP, NENGINE };
+static const char* const ENGINE_NAME[NENGINE] = {"PWM", "SAW", "FM", "ORGAN", "WAVE", "VOICE", "SHEP"};
 enum Lfo { L_SINE, L_TRI, L_SAW, L_SQR, L_SH, L_DRIFT, NLFO };
 static const char* const LFO_NAME[NLFO] = {"SINE", "TRIANGLE", "SAW DOWN", "SQUARE", "S&H", "DRIFT"};
 
@@ -330,7 +330,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
       }
       break;
     }
-    case E_RF: {  // RF organ: 16 partials shaped by the subcarrier profile
+    case E_ORGAN: {  // organ: 16 partials shaped by the subcarrier profile
       float sum = 0;
       for (int k = 0; k < 16; k++) {
         int s0 = k * NSC / 16, s1 = (k + 1) * NSC / 16;
@@ -352,7 +352,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
       wA = WT[(int)pos], wB = WT[(int)pos + 1], wfr = pos - (int)pos;
       break;
     }
-    case E_VOX: {  // choir: four saws through three formant bandpasses, TIMBRE sings a-e-i-o-u
+    case E_VOICE: {  // choir: four saws through three formant bandpasses, TIMBRE sings a-e-i-o-u
       float du = exp2f(sp * 30 / 1200), vp = tb * 3.999f, vf = vp - (int)vp;
       int vi = (int)vp;
       inc[0] = f0 * du / SR, inc[1] = f0 / du / SR, inc[2] = fv[1] / SR, inc[3] = fv[2] / SR;
@@ -432,7 +432,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
           x += (v == 1 ? 0.25f : 0.4f) * sinT(ph[v] + idx[v] * sinT(mph[v]));
         }
         break;
-      case E_RF:
+      case E_ORGAN:
         for (int j = 0; j < 16; j++)
           if (amp[j] > 1e-4f) {
             ph[j] = wrap1(ph[j] + inc[j]);
@@ -450,7 +450,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
         }
         x *= 1 / 32000.f;
         break;
-      case E_VOX: {
+      case E_VOICE: {
         float s = 0;
         for (int j = 0; j < 4; j++) {
           ph[j] = wrap1(ph[j] + inc[j]);

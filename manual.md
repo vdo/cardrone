@@ -103,9 +103,9 @@ Press `1`–`7`. The sound fades over when you switch.
 | `1` | **PWM** | Six pulse waves (root, fifth, sub) with slowly drifting widths. Warm and analog. | how much the pulse widths move | detune between voice pairs |
 | `2` | **SAW** | Seven-voice supersaw plus a sine sub. Big and lush. | level of the side voices | detune |
 | `3` | **FM** | Three FM bells (root, fifth, sub). Glassy and metallic. | brightness (FM depth) | slight beating between the bells |
-| `4` | **RF.ORG** | An organ of 16 partials whose loudness follows the live shape of the WiFi signal. The room literally shapes the tone. | how strongly the signal shapes the partials | stretches the partials apart (more bell-like) |
+| `4` | **ORGAN** | An organ of 16 partials whose loudness follows the live shape of the WiFi signal. The room literally shapes the tone. | how strongly the signal shapes the partials | stretches the partials apart (more bell-like) |
 | `5` | **WAVE** | Wavetable. | scans 8 waves: sine → warm → triangle → saw → square → "ah" → nasal → glass | detune |
-| `6` | **VOX** | A choir: four voices through vocal formants. | the vowel: a → e → i → o → u | choir detune |
+| `6` | **VOICE** | A choir: four voices through vocal formants. | the vowel: a → e → i → o → u | choir detune |
 | `7` | **SHEP** | A Shepard drone: octaves that slide forever without ever getting higher or lower. | glide: 0.5 holds still, above rises, below falls | how wide the bell of octaves is |
 
 ## Params
@@ -188,9 +188,9 @@ Presets live on the SD card in `/cardrone/preset1.json` to `preset8.json`. A pre
 ## Recipes
 
 - **Breathing room:** PWM, MOT → CUTOFF +40, LFO (drift, slow) → CUTOFF +10, reverb high. The drone opens up when people move and closes when they settle.
-- **Choir that reacts:** VOX, PHS → TIMBRE +30 so the vowel drifts as the room changes, MOT → REVERB +25.
+- **Choir that reacts:** VOICE, PHS → TIMBRE +30 so the vowel drifts as the room changes, MOT → REVERB +25.
 - **Endless descent:** SHEP with TIMBRE around 0.3, then RSI → TIMBRE +20 so the slide speeds up as you approach the router.
-- **The room's own voice:** RF.ORG with TIMBRE high, so the WiFi signal's shape *is* the timbre. Calibrate first, then try HI → SHIMMR +30.
+- **The room's own voice:** ORGAN with TIMBRE high, so the WiFi signal's shape *is* the timbre. Calibrate first, then try HI → SHIMMR +30.
 
 ## If something seems off
 

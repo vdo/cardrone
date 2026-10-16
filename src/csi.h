@@ -33,7 +33,7 @@ struct Norm {
 
 struct Csi {
   float fast[NSC] = {}, slow[NSC] = {}, base[NSC] = {}, prev[NSC] = {};
-  float prof[NSC] = {};  // 0..1 spectrum shape: waterfall, bars, RF organ partials
+  float prof[NSC] = {};  // 0..1 spectrum shape: waterfall, bars, organ partials
   float profLo = 0, profHi = 1;
   float src[NSRC] = {};  // mod sources; S_LFO is written by the synth (bipolar)
   volatile uint32_t frames = 0;

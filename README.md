@@ -48,7 +48,7 @@ Nothing sounds until `Enter` (play). On the ADV, plugging headphones into the ja
 | Key | Action |
 |---|---|
 | `Tab` | page: Waterfall → Bars → Params → Matrix |
-| `1`–`7` | engine: PWM, SAW (supersaw), FM (bell), RF.ORG (subcarrier additive), WAVE (wavetable), VOX (formant choir), SHEP (endless Shepard drone) |
+| `1`–`7` | engine: PWM, SAW (supersaw), FM (bell), ORGAN (subcarrier additive), WAVE (wavetable), VOICE (formant choir), SHEP (endless Shepard drone) |
 | `r` | randomize params in drone-friendly ranges (pitch, noise and level stay put) |
 | `[` `]` | root note down / up |
 | `9` `0` | octave down / up |
@@ -75,7 +75,7 @@ Nothing sounds until `Enter` (play). On the ADV, plugging headphones into the ja
 | LFO | internal, bipolar, rate = LFO param |
 
 Destinations: PITCH CUTOFF RESO TIMBRE SPREAD NOISE LFO LEVEL DRIVE CRUSH RING CHORUS D.TIME D.FB REVERB SHIMMR.
-TIMBRE is per engine: pulse width, supersaw side level, FM index, how strongly the CSI spectrum shapes the RF organ partials, wavetable position (sine → warm → triangle → saw → square → "ah" → nasal → glass), vowel (a e i o u), or Shepard glide (0.5 holds still, above rises, below falls).
+TIMBRE is per engine: pulse width, supersaw side level, FM index, how strongly the CSI spectrum shapes the organ partials, wavetable position (sine → warm → triangle → saw → square → "ah" → nasal → glass), vowel (a e i o u), or Shepard glide (0.5 holds still, above rises, below falls).
 The LFO shape is saved with presets; the theme is saved on the device.
 
 ## Tuning on hardware
