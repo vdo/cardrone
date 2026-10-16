@@ -56,7 +56,7 @@ Nothing sounds until `Enter` (play). On the ADV, plugging headphones into the ja
 | `c` | calibrate an empty-room baseline: 5 s countdown to leave the room, then ~3 s capture (any key cancels); LO/MID/HI then measure deviation from it |
 | `s` / `l` then `1`–`8` | save / load preset to `/cardrone/presetN.json` on SD |
 | `-` `=` | volume |
-| `` ` `` | options: audio out, volume, mod profile (sharp, normal, smooth, slow), LFO shape (sine, triangle, saw, square, S&H, drift) and rate, theme (green, yellow, red, blue), network, calibrate |
+| `` ` `` | options: audio out, volume, mod profile (sharp, normal, smooth, slow), LFO shape (sine, triangle, saw, square, S&H, drift) and rate, theme (green, yellow, red, blue, B&W), network, calibrate |
 | `h` | key help overlay |
 | `;` `.` | up / down (Params, Matrix) |
 | `,` `/` | adjust value (Params, Matrix) |

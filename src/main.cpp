@@ -29,9 +29,14 @@ static uint16_t C_SCAN, C_BAR, C_DIM, C_MID, C_HI, C_HOT, C_WARN;  // set by app
 static uint16_t ramp[32];  // black -> phosphor -> white-hot
 struct Theme { const char* name; uint8_t r, g, b; uint16_t warn; };
 static const Theme THEMES[] = {{"GREEN", 0, 255, 90, rgb(255, 176, 0)}, {"YELLOW", 255, 200, 0, rgb(255, 70, 40)},
-                               {"RED", 255, 40, 30, rgb(255, 200, 0)}, {"BLUE", 40, 140, 255, rgb(255, 176, 0)}};
+                               {"RED", 255, 40, 30, rgb(255, 200, 0)}, {"BLUE", 40, 140, 255, rgb(255, 176, 0)},
+                               {"B&W", 255, 255, 255, rgb(255, 176, 0)}};  // grey UI; warnings, ticks, engine tags keep colour
 constexpr int NTHEME = sizeof THEMES / sizeof *THEMES;
 static uint8_t theme = 0;  // saved in NVS
+// Header tag per engine, the same in every theme (no amber: that means "warning").
+static const uint16_t ENGINE_COLOR[] = {rgb(0, 220, 255),  rgb(255, 120, 30), rgb(180, 110, 255), rgb(120, 255, 60),
+                                        rgb(255, 70, 170), rgb(255, 225, 40), rgb(60, 140, 255)};
+static_assert(sizeof ENGINE_COLOR / sizeof *ENGINE_COLOR == NENGINE, "one colour per engine");
 
 static void applyTheme() {
   const Theme& t = THEMES[theme];
@@ -247,7 +252,7 @@ static void drawHeader() {
   cv.drawString("CARDRONE", 3, 2);
   const char* en = ENGINE_NAME[P.engine];
   int ew = cv.textWidth(en) + 6;
-  cv.fillRoundRect(55, 1, ew, 10, 2, C_MID);
+  cv.fillRoundRect(55, 1, ew, 10, 2, ENGINE_COLOR[P.engine]);
   cv.setTextColor(C_BG);
   cv.drawString(en, 58, 2);
   char s[24];

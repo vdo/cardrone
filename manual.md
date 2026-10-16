@@ -18,7 +18,7 @@ Plug in headphones and the speaker switches off by itself.
 
 **Header**, from left to right:
 
-- the engine name, then the root note, octave and scale, e.g. `A2 MINOR`
+- the engine name, in its own color, so you can tell at a glance which one is playing; then the root note, octave and scale, e.g. `A2 MINOR`
 - the network mode letter and channel: `A` auto, `J` join, `L` listen, so `A6` means AUTO on channel 6
 - how many WiFi measurements arrive per second, e.g. `48Hz` (amber when nothing is coming in)
 - the battery level (in the warning color below 20%)
@@ -163,7 +163,7 @@ Move with `;` `.`, change with `,` `/` or Enter, close with `` ` ``.
 | MOD PROFILE | how fast the room's changes reach the sound: **SHARP** (almost instant, for gestures), **NORMAL** (half a second), **SMOOTH** (1.5 s swells, the default) or **SLOW** (4 s tides). Pitch moves between scale notes at a matching pace. Remembered after power-off. |
 | LFO SHAPE | sine, triangle, saw down, square, S&H (random steps), drift (smooth random wandering) |
 | LFO RATE | from 0.02 Hz (one cycle per ~50 seconds) to about 5 Hz |
-| THEME | green, yellow, red or blue phosphor; remembered after power-off |
+| THEME | green, yellow, red or blue phosphor, or B&W (grey, with warnings, calibration ticks and engine tags still in color); remembered after power-off |
 | NETWORK | the network screen (see below) |
 | CALIBRATE | record the empty room, after a 5 s countdown to leave |
 
