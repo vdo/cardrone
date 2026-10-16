@@ -51,13 +51,13 @@ constexpr int NSLOT = 8;
 struct Slot { uint8_t src, dst; int8_t depth; };  // depth -100..100, 0 = off
 
 struct Patch {
-  uint8_t engine, root, octave, scale, fx, lfo;
+  uint8_t engine, root, octave, scale, fx, lfo, voices;  // voices: 1 root, 2 +fifth, 3 +sub
   float p[NPARAM];
   Slot mod[NSLOT];
 };
 
 static const Patch DEFAULT_PATCH = {
-    E_PWM, 9, 2, 0, FX_CHORUS | FX_DELAY | FX_REVERB, L_SINE,
+    E_PWM, 9, 2, 0, FX_CHORUS | FX_DELAY | FX_REVERB, L_SINE, 3,
     {0.5f, 0.45f, 0.3f, 0.4f, 0.35f, 0.f, 0.3f, 0.7f, 0.2f, 0.f, 0.3f, 0.5f, 0.45f, 0.45f, 0.6f, 0.2f},
     {{S_MOT, P_CUTOFF, 35}, {S_PHS, P_TIMBRE, 25}, {S_MOT, P_SHIMMER, 30}, {S_MID, P_REVERB, 20},
      {S_RSSI, P_SPREAD, 15}, {S_LFO, P_CUTOFF, 10}, {S_HI, P_DFB, 20}, {S_LO, P_CHORUS, 20}},
@@ -78,8 +78,8 @@ static inline int quantize(float s, uint16_t mask) {
 
 // ── patch JSON (hand-rolled: the format is ours and flat) ────────────────────
 static int patchToJson(const Patch& p, char* out, int cap) {  // cap >= 512
-  int n = snprintf(out, cap, "{\"engine\":%d,\"root\":%d,\"octave\":%d,\"scale\":%d,\"fx\":%d,\"lfo\":%d,\n\"params\":[",
-                   p.engine, p.root, p.octave, p.scale, p.fx, p.lfo);
+  int n = snprintf(out, cap, "{\"engine\":%d,\"root\":%d,\"octave\":%d,\"scale\":%d,\"fx\":%d,\"lfo\":%d,\"voices\":%d,\n\"params\":[",
+                   p.engine, p.root, p.octave, p.scale, p.fx, p.lfo, p.voices);
   for (int i = 0; i < NPARAM; i++) n += snprintf(out + n, cap - n, "%s%.3f", i ? "," : "", p.p[i]);
   n += snprintf(out + n, cap - n, "],\n\"matrix\":[");
   for (int i = 0; i < NSLOT; i++)
@@ -109,12 +109,13 @@ static int clampInt(float v, int lo, int hi) { return v >= lo ? (v <= hi ? (int)
 // SD files are user-editable: every field is range-checked before use.
 static bool patchFromJson(const char* js, Patch& out) {
   static const char* const keys[5] = {"\"engine\"", "\"root\"", "\"octave\"", "\"scale\"", "\"fx\""};
-  float h[5], v[NPARAM], m[NSLOT * 3], lfo = 0;
+  float h[5], v[NPARAM], m[NSLOT * 3], lfo = 0, voices = 3;
   for (int i = 0; i < 5; i++)
     if (jsonNums(js, keys[i], &h[i], 1) != 1) return false;
   if (jsonNums(js, "\"params\"", v, NPARAM) != NPARAM) return false;
   if (jsonNums(js, "\"matrix\"", m, NSLOT * 3) != NSLOT * 3) return false;
-  jsonNums(js, "\"lfo\"", &lfo, 1);  // optional: presets saved before LFO shapes lack it
+  jsonNums(js, "\"lfo\"", &lfo, 1);  // optional: older presets lack these two
+  jsonNums(js, "\"voices\"", &voices, 1);
   Patch p;
   p.engine = clampInt(h[0], 0, NENGINE - 1);
   p.root = clampInt(h[1], 0, 11);
@@ -122,6 +123,7 @@ static bool patchFromJson(const char* js, Patch& out) {
   p.scale = clampInt(h[3], 0, NSCALE - 1);
   p.fx = clampInt(h[4], 0, 63);
   p.lfo = clampInt(lfo, 0, NLFO - 1);
+  p.voices = clampInt(voices, 1, 3);
   for (int i = 0; i < NPARAM; i++) p.p[i] = clamp01(v[i]);
   for (int i = 0; i < NSLOT; i++)
     p.mod[i] = {(uint8_t)clampInt(m[3 * i], 0, NSRC - 1), (uint8_t)clampInt(m[3 * i + 1], 0, NPARAM - 1),
@@ -207,9 +209,9 @@ struct Synth {
   void render(int16_t* out, int n, float* src, const float* prof);
 
  private:
-  float ph[16] = {}, pwmPh[6] = {}, mph[3] = {}, partAmp[16] = {}, fz1[3] = {}, fz2[3] = {}, shep = 0;
+  float ph[24] = {}, pwmPh[6] = {}, mph[3] = {}, partAmp[16] = {}, fz1[3] = {}, fz2[3] = {}, shep = 0;
   float baseS[NPARAM], modS[NSRC] = {}, lfoPh = 0, lfoA = 0, lfoB = 0, semis = 0, fade = 0, cut = 1000, ic1 = 0, ic2 = 0;
-  int engine = -1;
+  int engine = -1, curVoices = 3;
   uint8_t fxOn = 0;
   uint32_t rng = 22222;
   float crushHeld = 0, ringPh = 0;
@@ -281,9 +283,13 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
     if (s.depth && s.src < NSRC && s.dst < NPARAM) eff[s.dst] += modS[s.src] * s.depth * 0.01f;
   for (float& e : eff) e = clamp01(e);
 
-  // Engine swap: fade out, switch, fade back in.
-  if (P.engine != engine && fade < 0.002f) engine = P.engine < NENGINE ? P.engine : 0;
-  float fadeTo = P.engine == engine ? 1.f : 0.f;
+  // Engine or voice-count swap: fade out, switch, fade back in (oscillators
+  // appearing or vanishing mid-wave would click).
+  if ((P.engine != engine || P.voices != curVoices) && fade < 0.002f) {
+    engine = P.engine < NENGINE ? P.engine : 0;
+    curVoices = P.voices;
+  }
+  float fadeTo = P.engine == engine && P.voices == curVoices ? 1.f : 0.f;
 
   // An FX switched on starts clean instead of replaying a stale buffer.
   uint8_t fx = P.fx, on = fx & ~fxOn;
@@ -300,9 +306,13 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
   float fv[3] = {f0, f0 * 1.4983f, f0 * 0.5f};  // root, fifth, sub
   float tb = eff[P_TIMBRE], sp = eff[P_SPREAD];
 
-  float inc[16], idt[16], amp[16], pw[6], idx[3], minc[3], fa1[3], fa2[3], fa3[3], fk[3];
+  float inc[24], idt[24], amp[24], pw[6], idx[3], minc[3], fa1[3], fa2[3], fa3[3], fk[3];
   float norm = 1, wfr = 0;
   const int16_t *wA = WT[0], *wB = WT[1];
+  // Voices stack root, fifth (fv[1]) and sub (fv[2]); fewer voices get a lift so
+  // the level stays put (ORGAN and SHEP normalise themselves).
+  int tones = curVoices < 1 ? 1 : curVoices > 3 ? 3 : curVoices;
+  float vg = tones == 1 ? 1.25f : tones == 2 ? 1.1f : 1.f;
   switch (engine) {
     case E_PWM: {
       static const float rate[6] = {0.11f, 0.17f, 0.07f, 0.13f, 0.05f, 0.09f};
@@ -317,7 +327,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
     }
     case E_SAW:
       for (int j = 0; j < 7; j++) {
-        inc[j] = f0 * exp2f((j - 3) / 3.f * sp * 40 / 1200) / SR;
+        inc[j] = fv[tones > 1 ? j % 2 : 0] * exp2f((j - 3) / 3.f * sp * 40 / 1200) / SR;
         idt[j] = 1 / inc[j];
       }
       inc[7] = f0 * 0.5f / SR;
@@ -331,15 +341,17 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
       }
       break;
     }
-    case E_ORGAN: {  // organ: 16 partials shaped by the subcarrier profile
+    case E_ORGAN: {  // organ: 16 partials shaped by the subcarrier profile, shared among the voices
       float sum = 0;
-      for (int k = 0; k < 16; k++) {
-        int s0 = k * NSC / 16, s1 = (k + 1) * NSC / 16;
+      for (int k = 0, h = 0, last = -1; k < 16; k++) {
+        int s0 = k * NSC / 16, s1 = (k + 1) * NSC / 16, v = k * tones / 16;
+        h = v == last ? h + 1 : 1;  // harmonic number within this voice
+        last = v;
         float b = 0;
         for (int s = s0; s < s1; s++) b += prof[s];
         b /= s1 - s0;
-        inc[k] = f0 * powf(k + 1, 1 + sp * 0.12f) / SR;
-        float t = inc[k] < 0.45f ? powf(k + 1, -0.8f) * (1 - tb + tb * 1.6f * b) : 0;
+        inc[k] = fv[v] * powf(h, 1 + sp * 0.12f) / SR;
+        float t = inc[k] < 0.45f ? powf(h, -0.8f) * (1 - tb + tb * 1.6f * b) : 0;
         partAmp[k] += (t - partAmp[k]) * glide;
         amp[k] = partAmp[k];
         sum += amp[k];
@@ -369,10 +381,10 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
       shep += n * (tb - 0.5f) * 0.15f / SR;  // octaves/s; TIMBRE 0.5 holds still, above rises
       shep -= 8 * floorf(shep / 8);
       float sum = 0, sharp = 1 + (1 - sp) * 4;  // SPREAD widens the bell
-      for (int k = 0; k < 8; k++) {
-        float o = k + shep;
+      for (int k = 0; k < 8 * tones; k++) {  // one bell per voice
+        float o = k % 8 + shep;
         if (o >= 8) o -= 8;  // wraps at the bell's silent edge
-        inc[k] = f0 * exp2f(o - 4) / SR;
+        inc[k] = fv[k / 8] * exp2f(o - 4) / SR;
         amp[k] = inc[k] < 0.45f ? powf(0.5f - 0.5f * sinT(o / 8 + 0.25f), sharp) : 0;
         sum += amp[k];
       }
@@ -418,11 +430,11 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
     float x = 0;
     switch (engine) {
       case E_PWM:
-        for (int j = 0; j < 6; j++) {
+        for (int j = 0; j < 2 * tones; j++) {  // a detuned pair per voice
           ph[j] = wrap1(ph[j] + inc[j]);
           x += (j < 2 ? 0.5f : j < 4 ? 0.3f : 0.4f) * pulseB(ph[j], inc[j], idt[j], pw[j]);
         }
-        x *= 0.42f;
+        x *= 0.42f * vg;
         break;
       case E_SAW: {
         float side = 0.2f + 0.8f * tb;
@@ -431,15 +443,16 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
           x += (j == 3 ? 1.f : side) * sawB(ph[j], inc[j], idt[j]);
         }
         ph[7] = wrap1(ph[7] + inc[7]);
-        x = x * 0.12f + 0.3f * sinT(ph[7]);
+        x = (x * 0.12f + (tones == 3 ? 0.3f * sinT(ph[7]) : 0)) * vg;
         break;
       }
       case E_FM:
-        for (int v = 0; v < 3; v++) {
+        for (int v = 0; v < tones; v++) {
           mph[v] = wrap1(mph[v] + minc[v]);
           ph[v] = wrap1(ph[v] + inc[v]);
           x += (v == 1 ? 0.25f : 0.4f) * sinT(ph[v] + idx[v] * sinT(mph[v]));
         }
+        x *= vg;
         break;
       case E_ORGAN:
         for (int j = 0; j < 16; j++)
@@ -450,21 +463,22 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
         x *= norm;
         break;
       case E_WAVE:
-        for (int v = 0; v < 4; v++) {
+        for (int v = 0; v < tones + 1; v++) {  // root pair, fifth, sub
           ph[v] = wrap1(ph[v] + inc[v]);
           float pf = ph[v] * WT_N, fr = pf - (int)pf;
           int i0 = (int)pf, i1 = (i0 + 1) & (WT_N - 1);
           float a = wA[i0] + (wA[i1] - wA[i0]) * fr, b = wB[i0] + (wB[i1] - wB[i0]) * fr;
           x += (v < 2 ? 0.35f : v == 2 ? 0.2f : 0.3f) * (a + (b - a) * wfr);
         }
-        x *= 1 / 32000.f;
+        x *= vg / 32000.f;
         break;
       case E_VOICE: {
         float s = 0;
-        for (int j = 0; j < 4; j++) {
+        for (int j = 0; j < tones + 1; j++) {  // root pair, fifth, sub
           ph[j] = wrap1(ph[j] + inc[j]);
           s += (j == 2 ? 0.6f : 1.f) * sawB(ph[j], inc[j], idt[j]);
         }
+        s *= vg;
         for (int f = 0; f < 3; f++) {  // TPT bandpass; k * band = unity gain at the formant
           float v3 = s - fz2[f], v1 = fa1[f] * fz1[f] + fa2[f] * v3, v2 = fz2[f] + fa2[f] * fz1[f] + fa3[f] * v3;
           fz1[f] = 2 * v1 - fz1[f];
@@ -474,7 +488,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
         break;
       }
       case E_SHEP:
-        for (int j = 0; j < 8; j++) {
+        for (int j = 0; j < 8 * tones; j++) {
           ph[j] = wrap1(ph[j] + inc[j]);
           x += amp[j] * sinT(ph[j]);
         }

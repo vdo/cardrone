@@ -264,10 +264,11 @@ static void drawHeader() {
   cv.setTextColor(C_HI);
   cv.drawString("CARDRONE", 3, 2);
   const char* en = ENGINE_NAME[P.engine];
-  int ew = cv.textWidth(en) + 6;
+  int tw = cv.textWidth(en), ew = tw + 5 + 3 * P.voices;
   cv.fillRoundRect(55, 1, ew, 10, 2, ENGINE_COLOR[P.engine]);
   cv.setTextColor(C_BG);
   cv.drawString(en, 58, 2);
+  for (int v = 0; v < P.voices; v++) cv.fillRect(59 + tw + v * 3, 3, 2, 6, C_BG);  // one bar per voice
   char s[24];
   snprintf(s, sizeof s, "%s%d %s", NOTE_NAME[P.root], P.octave, SCALES[P.scale].name);
   cv.setTextColor(C_HI);
@@ -379,7 +380,7 @@ static void drawHelp() {
       {"TAB", "next page"}, {"1-7", "drone engine"}, {"[ ]", "root note"}, {"9 0", "octave"},
       {"k", "scale"},       {"r", "randomize"},      {"c", "calibrate room"}, {"s l", "save/load 1-8"},
       {"- =", "volume"},    {"`", "options+network"}, {";.", "up / down"}, {",/", "adjust"},
-      {"ENT", "play/stop, edit"}, {"DEL", "clear mod slot"}, {"h", "this help"}};
+      {"ENT", "play/stop, edit"}, {"DEL", "clear mod slot"}, {"n", "voices 1-3"}, {"h", "this help"}};
   for (int i = 0; i < (int)(sizeof K / sizeof *K); i++) {
     int x = 6 + (i / 8) * 120, y = 16 + (i % 8) * 11;
     cv.setTextColor(C_HI);
@@ -841,6 +842,12 @@ static void onKey(char c) {
     case '`': overlay = OV_OPTIONS; break;
     case '1': case '2': case '3': case '4': case '5': case '6': case '7': P.engine = c - '1'; break;
     case 'r': randomize(); break;
+    case 'n': {
+      static const char* const DESC[3] = {"VOICES 1: root", "VOICES 2: root + fifth", "VOICES 3: root + fifth + sub"};
+      P.voices = P.voices % 3 + 1;
+      say(DESC[P.voices - 1]);
+      break;
+    }
     case '[': P.root = (P.root + 11) % 12; break;
     case ']': P.root = (P.root + 1) % 12; break;
     case '9': if (P.octave > 0) P.octave--; break;

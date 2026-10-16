@@ -53,7 +53,9 @@ int main(int argc, char** argv) {
   assert(patchFromJson(js, q));
   assert(q.engine == p.engine && q.fx == p.fx && q.mod[2].depth == -40 && q.mod[3].dst == P_REVERB);
   assert(fabsf(q.p[P_TIMBRE] - 0.123f) < 1e-3f);
-  assert(q.lfo == p.lfo);
+  assert(q.lfo == p.lfo && q.voices == p.voices);
+  assert(patchFromJson("{\"engine\":1,\"root\":0,\"octave\":2,\"scale\":0,\"fx\":0,\"params\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"
+                       "\"matrix\":[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]}", q) && q.voices == 3);  // pre-voices preset
   assert(!patchFromJson("{\"engine\":1}", q));
   const char* evil =
       "{\"engine\":99,\"root\":-5,\"octave\":7,\"scale\":-nan,\"fx\":999,\"params\":[9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,-x9],"
@@ -108,6 +110,26 @@ int main(int argc, char** argv) {
     }
     printf("reverb+shimmer maxed: %.2f%% of samples at the clipper\n", 100.0 * pinned / (SR * 10));
     assert(pinned < SR * 10 / 100);
+  }
+
+  // Every engine at 1, 2 and 3 voices: audible, and the level roughly holds as voices drop.
+  for (int e = 0; e < NENGINE; e++) {
+    printf("%-6s voices", ENGINE_NAME[e]);
+    for (int v = 1; v <= 3; v++) {
+      syn.pt = DEFAULT_PATCH;
+      syn.pt.engine = e, syn.pt.voices = v;
+      float src0[NSRC] = {}, flat[NSC];
+      for (float& f : flat) f = 0.5f;
+      double sq = 0;
+      for (int i = 0; i < SR * 3; i += 512) {
+        syn.render(pcm, 512, src0, flat);
+        if (i >= SR * 2) for (int j = 0; j < 512; j++) sq += (double)pcm[j] * pcm[j];
+      }
+      float rms = sqrtf(sq / (SR - SR % 512)) / 32767;
+      printf("  %d: rms %.3f", v, rms);
+      assert(rms > 0.03f && rms < 0.7f);
+    }
+    puts("");
   }
 
   // Every engine with every FX and swinging sources: finite, audible, not pinned.

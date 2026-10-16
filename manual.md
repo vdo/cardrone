@@ -18,7 +18,7 @@ Plug in headphones and the speaker switches off by itself.
 
 **Header**, from left to right:
 
-- the engine name, in its own color, so you can tell at a glance which one is playing; then the root note, octave and scale, e.g. `A2 MINOR`
+- the engine name, in its own color, so you can tell at a glance which one is playing, with one small bar per voice; then the root note, octave and scale, e.g. `A2 MINOR`
 - the network mode letter and channel: `A` auto, `J` join, `L` listen, so `A6` means AUTO on channel 6
 - how many WiFi measurements arrive per second, e.g. `48Hz` (amber when nothing is coming in)
 - the battery level (in the warning color below 20%)
@@ -108,6 +108,16 @@ Press `1`–`7`. The sound fades over when you switch.
 | `6` | **VOICE** | A choir: four voices through vocal formants. | the vowel: a → e → i → o → u | choir detune |
 | `7` | **SHEP** | A Shepard drone: octaves that slide forever without ever getting higher or lower. | glide: 0.5 holds still, above rises, below falls | how wide the bell of octaves is |
 
+### Voices
+
+Press `n` to choose how many tones the drone stacks:
+
+- **1**: just the root
+- **2**: root and the fifth above it, the classic open drone
+- **3**: root, fifth and an octave below (the default)
+
+Every engine follows this. ORGAN shares its 16 partials among the voices, so at 1 voice it is one rich tone and at 3 a chord. SHEP gets one endless slide per voice. Fewer voices also leaves the synth more headroom (lower `DSP %`). The voice count is saved with presets.
+
 ## Params
 
 | Param | What it does |
@@ -138,6 +148,7 @@ Changes glide over a fraction of a second, so turning a knob, loading a preset o
 | **Enter** | play / stop (on Params and Matrix it edits while playing) |
 | **Tab** | next page |
 | `1`–`7` | engine |
+| `n` | voices: 1, 2 or 3 (see below) |
 | `[` `]` | root note down / up |
 | `9` `0` | octave down / up |
 | `k` | next scale: minor, major, dorian, phrygian, pentatonic, fifths, chromatic |
