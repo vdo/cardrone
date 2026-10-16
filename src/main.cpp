@@ -73,6 +73,8 @@ static int batt = -1;  // %, -1 = unknown
 constexpr uint32_t CAL_COUNTDOWN_MS = 5000;  // time to leave the room before the empty-room capture
 static uint32_t calAt = 0;                   // when the countdown ends (millis), 0 = no countdown
 static bool calibrating() { return calAt || csi.calLeft > 0; }
+constexpr uint32_t R_HOLD_MS = 3000;  // hold r this long to roll the mod matrix too
+static uint32_t rHeldAt = 0;          // when a press of r randomized the params, while it stays held
 static uint8_t wf[WF_ROWS][NSC];
 static int wfHead = 0, histHead = 0;
 static float motHist[HIST], srcPeak[NSRC], barPeak[NSC];
@@ -462,11 +464,16 @@ static void drawFooter() {
   else snprintf(s, sizeof s, "DSP%3d%%  MUTED", (int)(dspLoad * 100));
   cv.setTextColor(playing ? C_DIM : C_WARN);
   cv.drawRightString(s, W - 3, 116);
-  bool note = pending || millis() < toastUntil;
+  char hold[40] = "";  // r held: count down to the mod roll
+  if (rHeldAt)
+    snprintf(hold, sizeof hold, "RANDOMIZED  hold for mods: %lu",
+             (unsigned long)(R_HOLD_MS - min(R_HOLD_MS, (uint32_t)(millis() - rHeldAt)) + 999) / 1000);
+  bool note = pending || millis() < toastUntil || *hold;
   bool idle = !playing && !overlay && !calibrating();  // pulse "ENTER play" while silent
   cv.setTextColor(note ? C_WARN : idle && millis() / 500 % 2 ? C_HI : C_DIM);
   cv.drawString(pending == 's'              ? "SAVE to slot 1-8 (other key cancels)"
                 : pending                   ? "LOAD slot 1-8 (other key cancels)"
+                : *hold                     ? hold
                 : note                      ? toast
                 : calibrating()             ? "any key cancels"
                 : overlay == OV_HELP        ? "any key closes"
@@ -768,15 +775,13 @@ static void saveByte(const char* key, uint8_t v) {  // device settings in NVS
 }
 
 // New params in drone-friendly ranges; PITCH, NOISE and LEVEL stay put (lo < 0).
-static uint32_t rHeldAt = 0;  // when a press of r randomized the params; held 3 s rolls the mods too
-
 static void randomize() {
   static const float lo[NPARAM] = {-1, .25f, 0, 0, 0, -1, 0, -1, 0, 0, 0, .2f, .1f, .1f, .3f, 0};
   static const float hi[NPARAM] = {0, .7f, .6f, 1, .7f, 0, .6f, 0, .5f, .25f, .5f, .9f, .9f, .7f, .9f, .5f};
   for (int i = 0; i < NPARAM; i++)
     if (lo[i] >= 0) syn.pt.p[i] = lo[i] + (hi[i] - lo[i]) * (esp_random() >> 8) * (1 / 16777216.f);
   rHeldAt = millis();
-  say("RANDOMIZED  hold 3s: mods too");
+  say("RANDOMIZED");
 }
 
 // Held r: new routings, depths and LFO shape. Drone-safe: no PITCH, LEVEL, NOISE
@@ -791,6 +796,7 @@ static void randomizeMods() {
     s.depth = rnd(4) == 0 ? 0 : (rnd(4) == 0 ? -5 : 5) * (2 + rnd(7));
   }
   syn.pt.lfo = rnd(NLFO);
+  page = PG_MATRIX;  // show the new routings
   say("RANDOMIZED PARAMS + MODS");
 }
 
@@ -894,7 +900,7 @@ static void serviceKeys() {
     repeatAt = now + 350;
     rHeldAt = 0;  // any key change ends an r hold; a press of r that randomizes restarts it
     if (held) onKey(held);
-  } else if (held == 'r' && rHeldAt && now - rHeldAt >= 3000) {
+  } else if (held == 'r' && rHeldAt && now - rHeldAt >= R_HOLD_MS) {
     rHeldAt = 0;
     randomizeMods();
   } else if (held && strchr(";.,/-=", held) && now >= repeatAt) {  // auto-repeat nav + volume

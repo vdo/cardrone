@@ -29,7 +29,7 @@ constexpr float PARAM_TAU = 0.15f;
 
 enum Engine { E_PWM, E_SAW, E_FM, E_ORGAN, E_WAVE, E_VOICE, E_NOISE, NENGINE };
 static const char* const ENGINE_NAME[NENGINE] = {"PWM", "SAW", "FM", "ORG", "WAVE", "VOICE", "NOISE"};
-enum NoiseKind { N_DUST, N_WIND, N_PIPE, N_STATIC, N_METAL, NNOISE };  // TIMBRE morphs through these
+enum NoiseKind { N_DUST, N_WIND, N_SURF, N_STATIC, N_METAL, NNOISE };  // TIMBRE morphs through these
 enum Lfo { L_SINE, L_TRI, L_SAW, L_SQR, L_SH, L_DRIFT, NLFO };
 static const char* const LFO_NAME[NLFO] = {"SINE", "TRIANGLE", "SAW DOWN", "SQUARE", "S&H", "DRIFT"};
 
@@ -170,7 +170,6 @@ constexpr int DLY_N = SR * 45 / 100 / 2;  // 0.45 s tape, one slot per 2 samples
 constexpr int CHO_N = 1024, SHM_N = 1024;
 constexpr float SHIM_CEIL = 1.1f;  // reverb's share of the mix (REVERB x wet/dry) the shimmer loop is held under; healthy peaks ~1.06
 constexpr int WT_F = 8, WT_N = 256;  // wavetable: frames x samples
-constexpr int PIPE_N = 680;          // NOISE pipes: one comb per voice, tuned up octaves to fit (>= 65 Hz)
 static int16_t WT[WT_F][WT_N];
 // Formants (Hz) of a bass voice singing a, e, i, o, u.
 static const float VOWEL[5][3] = {{600, 1040, 2250}, {400, 1620, 2400}, {250, 1750, 2600}, {400, 750, 2400}, {350, 600, 2400}};
@@ -213,11 +212,11 @@ struct Synth {
 
  private:
   float ph[16] = {}, pwmPh[6] = {}, mph[3] = {}, partAmp[16] = {}, fz1[3] = {}, fz2[3] = {};
-  // NOISE: dust click, wind filters + wandering harmonic, pipe combs, static hold + swell, metal LFSRs
-  float dustV = 0, windH[3] = {6, 8, 4}, wz1[3] = {}, wz2[3] = {}, pipeLp[3] = {}, shV = 0, gate = 0.5f, gateT = 0.5f, metPh[3] = {};
-  int shCnt = 0, shHold = 1, pipeW[3] = {};
+  // NOISE: dust click, wind bands (log2 Hz) + gusts, surf wave + low-pass, static hold + swell, metal LFSRs
+  float dustV = 0, windC[2] = {9, 10.5f}, wz1[2] = {}, wz2[2] = {}, gust = 0.5f, gustT = 0.5f;
+  float surfPh = 0, surfRate = 0.1f, sz1 = 0, sz2 = 0, shV = 0, gate = 0.5f, gateT = 0.5f, metPh[3] = {};
+  int shCnt = 0, shHold = 1;
   uint16_t lfsr[3] = {1, 1, 1};
-  int16_t pipe[3 * PIPE_N] = {};
   float drvLp = 0, drvDc = 0;  // analog drive: circuit bandwidth, DC blocker
   Slot route[NSLOT];    // the routings as currently applied: glide toward pt.mod
   float routeD[NSLOT];  // their depths, gliding
@@ -326,7 +325,7 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
   float tb = eff[P_TIMBRE], sp = eff[P_SPREAD];
 
   float inc[16], idt[16], amp[16], pw[6], idx[3], minc[3], fa1[3], fa2[3], fa3[3], fk[3];
-  float norm = 1, wfr = 0, nzF = 0, dustP = 0, pipeFb = 0;
+  float norm = 1, wfr = 0, nzF = 0, dustP = 0, surfA = 0, surfG = 0;
   int nzA = 0, shMax = 2;
   const int16_t *wA = WT[0], *wB = WT[1];
   // Voices stack root, fifth (fv[1]) and sub (fv[2]); fewer voices get a lift so
@@ -397,23 +396,31 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
       }
       break;
     }
-    case E_NOISE: {  // five kinds of noise: TIMBRE morphs between neighbours, SPREAD shapes each
+    case E_NOISE: {  // five kinds of noise, unpitched but for METAL: TIMBRE morphs between neighbours
       float pos = tb * (NNOISE - 1) * 0.9999f;
       nzA = (int)pos, nzF = pos - nzA;
-      dustP = 0.002f + sp * sp * 0.03f;    // DUST: clicks per sample
-      float bw = 0.04f + sp * 0.4f;        // WIND: bandwidth (1/Q)
-      for (int v = 0; v < tones; v++) {
-        windH[v] = clampf(windH[v] + rnd() * 0.15f, 2, 12);  // the howl wanders between harmonics
-        float hz = fminf(fv[v] * windH[v], SR * 0.4f), g = tanf(PI_F * hz / SR);
+      dustP = 0.002f + sp * sp * 0.03f;  // DUST: clicks per sample
+      // WIND: two broad bands wandering 256 Hz - 4 kHz on their own (not on the drone's
+      // harmonics, or it whistles), blowing in gusts. SPREAD widens them.
+      float bw = 0.6f + sp * 1.2f;
+      if (rnd() > 0.92f) gustT = 0.25f + 0.75f * fabsf(rnd());
+      gust += (gustT - gust) * 0.04f;
+      for (int v = 0; v < 2; v++) {
+        windC[v] = clampf(windC[v] + rnd() * 0.06f, 8, 12);  // log2 Hz
+        float hz = exp2f(windC[v]), g = tanf(PI_F * hz / SR);
         fa1[v] = 1 / (1 + g * (g + bw)), fa2[v] = g * fa1[v], fa3[v] = g * fa2[v];
-        fk[v] = bw * 0.25f / sqrtf(bw * hz / SR);  // unity peak, then level-matched across widths
-        float f = fv[v];                           // PIPE: comb at the voice's pitch class
-        while (SR / f > PIPE_N - 2) f *= 2;
-        inc[v] = SR / f - 0.67f;  // minus the damping filter's delay
-        idt[v] = fv[v] * 93 / SR;  // METAL: a 93-step LFSR loop clocked to ring at the voice's pitch
+        fk[v] = gust * bw * 0.37f / sqrtf(bw * hz / SR);  // unity peak, level-matched across widths
       }
-      pipeFb = 0.995f - sp * 0.06f;   // SPREAD shortens the pipes' ring
-      shMax = 2 + (int)(sp * 14);      // STATIC: longer holds, crunchier
+      // SURF: a wave builds over ~30% of its 6-12 s cycle, then breaks; it opens a low-pass
+      // on the hiss and swells it. SPREAD brightens the foam.
+      surfPh += n * surfRate / SR;
+      if (surfPh >= 1) surfPh -= 1, surfRate = 0.08f + 0.08f * fabsf(rnd());
+      float e = surfPh < 0.3f ? surfPh / 0.3f : (1 - surfPh) / 0.7f;
+      e *= e;
+      surfA = 1 - expf(-2 * PI_F * (200 + (1500 + 4000 * sp) * e) / SR);
+      surfG = (0.25f + 0.75f * e) * 1.1f / sqrtf(surfA);
+      shMax = 2 + (int)(sp * 14);  // STATIC: longer holds, crunchier
+      for (int v = 0; v < tones; v++) idt[v] = fv[v] * 93 / SR;  // METAL: a 93-step LFSR loop rings at the voice's pitch
       break;
     }
   }
@@ -523,26 +530,18 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
               o = dustV * 3;
               dustV *= 0.55f;
               break;
-            case N_WIND:  // band-passed hiss howling around a wandering harmonic
-              for (int v = 0; v < tones; v++) {
+            case N_WIND:  // broad bands of hiss, wandering and gusting
+              for (int v = 0; v < 2; v++) {
                 float v3 = rnd() - wz2[v], v1 = fa1[v] * wz1[v] + fa2[v] * v3, v2 = wz2[v] + fa2[v] * wz1[v] + fa3[v] * v3;
                 wz1[v] = 2 * v1 - wz1[v];
                 wz2[v] = 2 * v2 - wz2[v];
                 o += fk[v] * v1;
               }
               break;
-            case N_PIPE:  // breath blown through a tuned tube: a damped comb per voice
-              for (int v = 0; v < tones; v++) {
-                int16_t* b = pipe + v * PIPE_N;
-                float rp = pipeW[v] - inc[v];
-                if (rp < 0) rp += PIPE_N;
-                int i0 = (int)rp, i1 = i0 + 1 == PIPE_N ? 0 : i0 + 1;
-                float t = (b[i0] + (b[i1] - b[i0]) * (rp - i0)) * (1 / 8192.f);
-                pipeLp[v] += (t - pipeLp[v]) * 0.6f;
-                b[pipeW[v]] = (int16_t)(clampf(rnd() * 0.15f + pipeLp[v] * pipeFb, -3.9f, 3.9f) * 8192);
-                if (++pipeW[v] == PIPE_N) pipeW[v] = 0;
-                o += t * 1.5f;
-              }
+            case N_SURF:  // hiss under a 2-pole low-pass that opens as each wave breaks
+              sz1 += (rnd() - sz1) * surfA;
+              sz2 += (sz1 - sz2) * surfA;
+              o = sz2 * surfG;
               break;
             case N_STATIC:  // shortwave: crushed noise in random holds, swelling and dropping out
               if (++shCnt >= shHold) shCnt = 0, shV = rnd(), shHold = 1 + (rng >> 24) % shMax;
@@ -556,13 +555,13 @@ DSP_IRAM void Synth::render(int16_t* out, int n, float* src, const float* prof) 
                   unsigned fb = (lfsr[v] ^ (lfsr[v] >> 6)) & 1;
                   lfsr[v] = (uint16_t)((lfsr[v] >> 1) | (fb << 14));
                 }
-                o += lfsr[v] & 1 ? 0.17f : -0.17f;
+                o += lfsr[v] & 1 ? 0.17f * vg : -0.17f * vg;
               }
               break;
           }
           y[s] = o;
         }
-        x = (y[0] + (y[1] - y[0]) * nzF) * vg;
+        x = y[0] + (y[1] - y[0]) * nzF;
         break;
       }
     }

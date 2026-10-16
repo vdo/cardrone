@@ -108,7 +108,7 @@ Press `1`–`7`. The sound fades over when you switch.
 | `4` | **ORG** | An organ of 16 partials whose loudness follows the live shape of the WiFi signal. The room literally shapes the tone. | how strongly the signal shapes the partials | stretches the partials apart (more bell-like) |
 | `5` | **WAVE** | Wavetable. | scans 8 waves: sine → warm → triangle → saw → square → "ah" → nasal → glass | detune |
 | `6` | **VOICE** | A choir: four voices through vocal formants. | the vowel: a → e → i → o → u | choir detune |
-| `7` | **NOISE** | Five kinds of noise, not just colors: **dust** (vinyl crackle, embers), **wind** (howling around the drone's harmonics), **pipe** (breath through tubes tuned to the drone), **static** (choppy shortwave), **metal** (8-bit console noise ringing at the drone's pitch). | which kind; in between, two neighbors blend | dust: density · wind: how wide the howl is · pipe: how short the ring · static: how crunchy |
+| `7` | **NOISE** | Five kinds of noise, not just colors: **dust** (vinyl crackle, embers), **wind** (broad gusts wandering on their own), **surf** (waves building and breaking every 6–12 s), **static** (choppy shortwave), **metal** (8-bit console noise ringing at the drone's pitch). Only metal is pitched. | which kind; in between, two neighbors blend | dust: density · wind: how broad the gusts are · surf: how bright the foam is · static: how crunchy |
 
 ### Voices
 
@@ -118,7 +118,7 @@ Press `n` to choose how many tones the drone stacks:
 - **2**: root and the fifth above it, the classic open drone
 - **3**: root, fifth and an octave below (the default)
 
-Every engine follows this. ORG shares its 16 partials among the voices, so at 1 voice it is one rich tone and at 3 a chord. NOISE tunes its wind, pipes and metal to each voice. Fewer voices also leaves the synth more headroom (lower `DSP %`). The voice count is saved with presets.
+Every engine follows this. ORG shares its 16 partials among the voices, so at 1 voice it is one rich tone and at 3 a chord. NOISE ignores voices except metal, which rings at each voice's pitch. Fewer voices also leaves the synth more headroom (lower `DSP %`). The voice count is saved with presets.
 
 ## Params
 
@@ -154,7 +154,7 @@ Changes glide over a fraction of a second, so turning a knob, loading a preset o
 | `[` `]` | root note down / up |
 | `9` `0` | octave down / up |
 | `k` | next scale: minor, major, dorian, phrygian, pentatonic, fifths, chromatic |
-| `r` | randomize params (pitch, noise and level stay put); **hold 3 s** to also randomize the modulation: every slot's source, param and depth, plus the LFO shape |
+| `r` | randomize params (pitch, noise and level stay put); **keep holding 3 s** (the footer counts down) to also randomize the modulation: every slot's source, param and depth, plus the LFO shape. The Matrix page then opens to show them. |
 | `c` | calibrate the empty room (5 s countdown to leave, any key cancels) |
 | `s` then `1`–`8` | save a preset to the SD card |
 | `l` then `1`–`8` | load a preset from the SD card |
@@ -202,7 +202,7 @@ Presets live on the SD card in `/cardrone/preset1.json` to `preset8.json`. A pre
 
 - **Breathing room:** PWM, MOT → CUTOFF +40, LFO (drift, slow) → CUTOFF +10, reverb high. The drone opens up when people move and closes when they settle.
 - **Choir that reacts:** VOICE, PHS → TIMBRE +30 so the vowel drifts as the room changes, MOT → REVERB +25.
-- **Weather in the room:** NOISE with TIMBRE around 0.3 (wind), MOT → TIMBRE +25 so walking in turns the wind into breathing pipes, and LFO (drift) → SPREAD +20.
+- **Weather in the room:** NOISE with TIMBRE around 0.3 (wind), MOT → TIMBRE +25 so walking in turns the wind into surf, and LFO (drift) → SPREAD +20.
 - **The room's own voice:** ORG with TIMBRE high, so the WiFi signal's shape *is* the timbre. Calibrate first, then try HI → SHIMMR +30.
 
 ## If something seems off
