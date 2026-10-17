@@ -203,16 +203,11 @@ static void loraStop() {
   if (loraUp) lora.standby();
 }
 
-// What the Heltec's screen shows.
+// How well the Heltec is heard, for its screen.
 static void loraStatus() {
   Status st;
-  const Patch& P = syn.pt;
   st.hz = csiHz > 255 ? 255 : csiHz;
   st.dbm = csi.rssi;
-  for (int s = 0; s < NSRC; s++) st.src[s] = (uint8_t)(clamp01(s == S_LFO ? 0.5f + 0.5f * csi.src[s] : csi.src[s]) * 255);
-  st.engine = P.engine, st.root = P.root, st.octave = P.octave, st.scale = P.scale;
-  st.flags = (playing ? ST_PLAYING : 0) | (csi.calibrated ? ST_CALIBRATED : 0) | (autoOn ? ST_AUTO : 0) |
-             (drift ? ST_DRIFT : 0) | (syn.freeze ? ST_FREEZE : 0);
   lora.transmit((uint8_t*)&st, sizeof st);
   loraRx = false;  // the transmit's own interrupt
   lora.startReceive();

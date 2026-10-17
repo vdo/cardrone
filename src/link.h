@@ -2,7 +2,6 @@
 // (src/main.cpp) both build from this, so they always agree.
 #pragma once
 #include <cstdint>
-#include "csi.h"
 
 // 50 kbps GFSK, 25 kHz deviation, BT 0.5 shaping: ~100 kHz wide, inside EU 869.7-870 MHz,
 // which allows 5 mW ERP with no duty-cycle limit. +5 dBm into a 2-3 dBi antenna stays under.
@@ -18,15 +17,12 @@ struct __attribute__((packed)) Beacon {
 };
 
 // Cardputer -> Heltec, a few a second, sent right after a beacon arrives: the Heltec
-// listens in the gaps between its own and shows this on its screen.
+// listens in the gaps between its own and shows how well it's heard.
 struct __attribute__((packed)) Status {
   char tag[2] = {'C', 'S'};
-  uint8_t hz = 0;       // beacons read in the last second
-  int8_t dbm = 0;       // their level
-  uint8_t src[NSRC] = {};  // the mod sources, 0-255 (LFO: 128 = centre)
-  uint8_t engine = 0, root = 0, octave = 0, scale = 0, flags = 0;
+  uint8_t hz = 0;  // beacons read in the last second
+  int8_t dbm = 0;  // their level
 };
-enum { ST_PLAYING = 1, ST_CALIBRATED = 2, ST_AUTO = 4, ST_DRIFT = 8, ST_FREEZE = 16 };
 
-static_assert(sizeof(Beacon) == 5 && sizeof(Status) == 17, "packet layout changed: reflash both boards");
+static_assert(sizeof(Beacon) == 5 && sizeof(Status) == 4, "packet layout changed: reflash both boards");
 template <class T> static bool isPacket(const uint8_t* b, int len) { return len == sizeof(T) && b[0] == T().tag[0] && b[1] == T().tag[1]; }

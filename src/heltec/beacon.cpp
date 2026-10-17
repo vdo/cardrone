@@ -3,12 +3,11 @@
 // how strongly each one arrives, and bodies moving through the flat change that.
 // Each beacon also carries a touch reading: touch GPIO2-7 (bare header pins work; a
 // wire or foil on one senses a hand from further away) and TCH rises. Between beacons
-// it listens for the Cardputer's Status, and the OLED shows both ends of the link.
+// it listens for the Cardputer's Status; the OLED shows how good the link is.
 // Flash: pio run -e heltec -t upload
 #include <Arduino.h>
 #include <RadioLib.h>
 #include <U8g2lib.h>
-#include "dsp.h"  // engine, note and scale names
 #include "link.h"
 
 constexpr float kTouchNoise = 0.01f;  // touch rise ignored as noise (fraction of the untouched reading)
@@ -23,8 +22,8 @@ static float base[NT];  // untouched reading per pin
 
 // loop() writes, the screen task reads: a torn value only shows for 200 ms.
 static struct {
-  float rise[NT];               // per touch pin, as a fraction above its untouched reading
   uint32_t sent = 0, txUs = 0;  // beacons sent; how long the last took
+  uint32_t replies = 0;         // Statuses received
   Status st;                    // the Cardputer's last word
   float backDbm = 0;            // its level here
   uint32_t heardAt = 0;         // millis(); 0 = never
@@ -44,61 +43,53 @@ static void screenTask(void*) {
   digitalWrite(Vext, LOW);  // powers the OLED
   delay(50);
   oled.begin();
-  oled.setFont(u8g2_font_4x6_tr);
   oled.setFontPosTop();
   analogSetPinAttenuation(1, ADC_2_5db);
-  uint32_t lastSent = 0, rate = 0, tRate = 0, tBat = 0;
-  float bat = vbat(), peak = 0;
-  char s[48];
+  uint32_t lastSent = 0, lastReplies = 0, rate = 0, replyRate = 0, tRate = 0, tBat = 0;
+  float bat = vbat();
+  char s[32];
   for (;; vTaskDelay(pdMS_TO_TICKS(200))) {
     uint32_t now = millis(), up = now / 1000;
-    if (now - tRate >= 1000) rate = v.sent - lastSent, lastSent = v.sent, tRate = now;
+    if (now - tRate >= 1000) {
+      rate = v.sent - lastSent, replyRate = v.replies - lastReplies;
+      lastSent = v.sent, lastReplies = v.replies, tRate = now;
+    }
     if (now - tBat >= 5000) bat = vbat(), tBat = now;
     Status st = v.st;
     bool heard = v.heardAt && now - v.heardAt < 3000;
     oled.clearBuffer();
+    oled.setFont(u8g2_font_5x7_tr);
 
-    oled.drawBox(0, 0, 128, 7);  // title bar
+    oled.drawBox(0, 0, 128, 9);
     oled.setDrawColor(0);
-    snprintf(s, sizeof s, "CARDRONE LORA %.2fMHz +%ddBm", LORA_FREQ, LORA_POWER);
-    oled.drawStr(1, 1, s);
+    snprintf(s, sizeof s, "CARDRONE %.2fMHz +%ddBm", LORA_FREQ, LORA_POWER);
+    oled.drawStr(2, 1, s);
     oled.setDrawColor(1);
-    snprintf(s, sizeof s, "TX %lu/s  air %lu%%  #%lu", rate, rate * v.txUs / 10000, v.sent);
-    oled.drawStr(0, 9, s);
 
-    if (heard) snprintf(s, sizeof s, "HEARD %u/s %ddBm  BACK %.0f", st.hz, st.dbm, v.backDbm);
-    else snprintf(s, sizeof s, v.heardAt ? "CARDPUTER LOST %lus AGO" : "WAITING: Cardputer on LORA?",
-                  (unsigned long)(now - v.heardAt) / 1000);
-    oled.drawStr(0, 16, s);
-    if (heard) {  // what the drone is doing
-      snprintf(s, sizeof s, "%s %s%d %s%s %s%s%s%s", ENGINE_NAME[st.engine % NENGINE], NOTE_NAME[st.root % 12], st.octave,
-               SCALES[st.scale % NSCALE].name, st.flags & ST_DRIFT ? "~" : "", st.flags & ST_PLAYING ? "PLAY" : "STOP",
-               st.flags & ST_AUTO ? " AUTO" : "", st.flags & ST_FREEZE ? " FRZ" : "", st.flags & ST_CALIBRATED ? " CAL" : "");
-      oled.drawStr(0, 23, s);
+    // How the Cardputer hears this board: the link the drone plays.
+    oled.drawStr(0, 11, "CARDPUTER HEARS");
+    oled.setFont(u8g2_font_9x15B_tr);
+    if (heard) {
+      snprintf(s, sizeof s, "%ddBm", st.dbm);
+      oled.drawStr(0, 19, s);
+      snprintf(s, sizeof s, "%u/s", st.hz);
+      oled.drawStr(127 - oled.getStrWidth(s), 19, s);
+    } else {
+      oled.drawStr(0, 19, v.heardAt ? "LOST" : "WAITING");
     }
+    oled.drawFrame(0, 35, 128, 5);  // signal: -110 dBm empty, -40 full
+    if (heard) oled.drawBox(1, 36, (int)(constrain((st.dbm + 110) / 70.f, 0.f, 1.f) * 126), 3);
+    oled.setFont(u8g2_font_5x7_tr);
 
-    for (int i = 0; i < NSRC; i++) {  // the Cardputer's mod sources
-      int x = i * 16 + 2, h = heard ? st.src[i] * 10 / 255 : 0;
-      oled.drawFrame(x, 30, 12, 12);
-      oled.drawBox(x + 1, 41 - h, 10, h);
-      oled.drawStr(x + (12 - oled.getStrWidth(SRC_NAME_LORA[i])) / 2, 43, SRC_NAME_LORA[i]);
-    }
-
-    float mx = 0;  // touch pins, scaled to the strongest recent touch
-    for (float r : v.rise) mx = fmaxf(mx, r);
-    peak = fmaxf(mx, peak * 0.98f);
-    oled.drawStr(0, 50, "T");
-    for (int i = 0; i < NT; i++) {
-      int x = 6 + i * 20;
-      snprintf(s, sizeof s, "%d", TOUCH[i]);
-      oled.drawStr(x, 50, s);
-      oled.drawFrame(x + 5, 50, 13, 6);
-      oled.drawBox(x + 6, 51, (int)(clamp01(v.rise[i] / fmaxf(peak, kTouchMin)) * 11), 4);
-    }
-
+    if (heard) snprintf(s, sizeof s, "BACK %.0fdBm  %lu/s", v.backDbm, replyRate);  // its answers, here
+    else if (v.heardAt) snprintf(s, sizeof s, "last heard %lus ago", (now - v.heardAt) / 1000);
+    else snprintf(s, sizeof s, "is the Cardputer on LORA?");
+    oled.drawStr(0, 43, s);
+    snprintf(s, sizeof s, "TX %lu/s  AIR %lu%%", rate, rate * v.txUs / 10000);
+    oled.drawStr(0, 50, s);
     char b[8] = "--";
     if (bat > 2.5f) snprintf(b, sizeof b, "%.2fV", bat);  // lower: no battery, or this board's divider differs
-    snprintf(s, sizeof s, "BAT %s  %.0fC  UP %lu:%02lu:%02lu", b, temperatureRead(), up / 3600, up / 60 % 60, up % 60);
+    snprintf(s, sizeof s, "BAT %s %.0fC UP %lu:%02lu:%02lu", b, temperatureRead(), up / 3600, up / 60 % 60, up % 60);
     oled.drawStr(0, 57, s);
     oled.sendBuffer();
   }
@@ -133,14 +124,13 @@ void loop() {
     size_t len = radio.getPacketLength();
     float dbm = radio.getRSSI(true);
     if (radio.readData(b, sizeof b) == RADIOLIB_ERR_NONE && isPacket<Status>(b, len))
-      memcpy(&v.st, b, sizeof v.st), v.backDbm = dbm, v.heardAt = millis();
+      memcpy(&v.st, b, sizeof v.st), v.backDbm = dbm, v.heardAt = millis(), v.replies++;
   }
   float rise = 0;  // the most-touched pin
   for (int i = 0; i < NT; i++) {
     float r = touchRead(TOUCH[i]);
     base[i] = fmaxf(base[i] + (r - base[i]) * (r < base[i] ? 0.1f : 0.0005f), 1);  // tracks drift; a held touch fades over ~20 s
-    v.rise[i] = fmaxf(r / base[i] - 1 - kTouchNoise, 0);
-    rise = fmaxf(rise, v.rise[i]);
+    rise = fmaxf(rise, r / base[i] - 1 - kTouchNoise);
   }
   bc.touch = (uint16_t)constrain(rise * 1000, 0.f, 65535.f);
   uint32_t t0 = micros();

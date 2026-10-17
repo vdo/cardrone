@@ -246,15 +246,14 @@ You need the M5Stack **Cap LoRa-1262** on the Cardputer and a **Heltec WiFi LoRa
 4. On the Cardputer: `` ` `` → NETWORK → **LORA**. The header shows `LR` and about `100Hz`.
 5. Calibrate (`e`) with nobody around to turn LVL into a presence sensor.
 
-The Heltec sends tiny radio packets 100 times a second on 869.85 MHz, at a power and frequency that are allowed without limits in Europe. The Cardputer answers a few times a second, so the Heltec's little screen can show both ends:
+The Heltec sends tiny radio packets 100 times a second on 869.85 MHz, at a power and frequency that are allowed without limits in Europe. The Cardputer answers a few times a second, so the Heltec's little screen shows how good the link is:
 
-- the top lines: how many packets it sends, and whether the Cardputer hears them (`HEARD 97/s -62dBm`: packets per second and how strong; `BACK`: how strong the Cardputer's answers arrive). `WAITING` means no answer yet: is the Cardputer on LORA?
-- the engine, note and scale the drone is playing, and `PLAY` / `STOP`, `AUTO`, `FRZ`, `CAL`
-- the eight mod sources as bars, so you can watch the room from where the Heltec stands
-- each touch pin's bar (2 to 7): touch one to find it
-- the battery voltage, the chip's temperature and how long it has been running
+- **CARDPUTER HEARS**, in big digits: how strong the Heltec's packets arrive at the Cardputer, and how many it reads per second, with a signal bar underneath. `WAITING` means no answer yet (is the Cardputer on LORA?); `LOST` means it stopped answering.
+- **BACK**: how strong the Cardputer's answers arrive at the Heltec, and how many per second (about 4).
+- **TX**: packets sent per second (100) and the share of time spent transmitting.
+- the battery voltage, the chip's temperature and how long it has been running.
 
-Handy for placing it: walk around with the Heltec and watch `HEARD` and the bars.
+Handy for placing it: walk around with the Heltec and watch the big numbers.
 
 ## Presets
 

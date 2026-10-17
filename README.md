@@ -91,22 +91,19 @@ Nothing sounds until `Space` (play). On the ADV, plugging headphones into the ja
 
 For when there's no WiFi to read, or to sense the whole flat through walls. Needs the [Cap LoRa-1262](https://docs.m5stack.com/en/cap/Cap_LoRa-1262) on the Cardputer and a [Heltec WiFi LoRa 32 V3](https://wiki.heltec.org/docs/devices/open-source-hardware/esp32-series/lora-32/wifi-lora-32-v3/Pin-diagram-guidance) (868 MHz version) running `src/heltec/beacon.cpp`; both antennas on. Power the Heltec anywhere (USB charger or its battery plug), then `` ` `` → NETWORK → LORA.
 
-The Heltec sends 100 five-byte GFSK beacons a second on 869.85 MHz at +5 dBm (EU 869.7–870 MHz: 5 mW ERP, no duty-cycle limit); its LED blinks slowly while it sends. The Cardputer measures the level of each beacon, averages them into 50 Hz frames, and refills the same eight slots, so the matrix and presets carry over. Four times a second it answers in the gap after a beacon (same frequency and power) with how well it hears the Heltec and what the drone is doing; both ends share the packet layout in `src/link.h`.
-
-The Heltec's OLED shows both ends of the link:
+The Heltec sends 100 five-byte GFSK beacons a second on 869.85 MHz at +5 dBm (EU 869.7–870 MHz: 5 mW ERP, no duty-cycle limit); its LED blinks slowly while it sends. The Cardputer measures the level of each beacon, averages them into 50 Hz frames, and refills the same eight slots, so the matrix and presets carry over. Four times a second it answers in the gap after a beacon (same frequency and power) with how well it hears the Heltec; both ends share the packet layout in `src/link.h`. The Heltec's OLED shows the link:
 
 ```
-CARDRONE LORA 869.85MHz +5dBm      title
-TX 100/s  air 26%  #123456         beacons sent per second, share of time on air, total
-HEARD 97/s -62dBm  BACK -58        beacons the Cardputer read per second and their level; the Cardputer's answers here
-PWM A2 MINOR~ PLAY AUTO FRZ CAL    engine, note, scale (~ drift), playing, autopilot, freeze, calibrated
-[#] [#] [#] [#] [#] [#] [#] [#]    the eight mod sources, live
-MOT TCH FLX LVL LO  MID HI  LFO
-T 2[== ] 3[   ] ... 7[   ]         each touch pin
-BAT 3.95V  31C  UP 1:23:45         battery (-- without one), chip temperature, uptime
+CARDRONE 869.85MHz +5dBm
+CARDPUTER HEARS
+-62dBm         97/s        level and rate of the beacons the Cardputer reads (WAITING / LOST until it answers)
+[##########          ]     signal: -110 to -40 dBm
+BACK -58dBm  4/s           the Cardputer's answers, as heard here
+TX 100/s  AIR 26%          beacons sent per second, share of time on air
+BAT 3.95V 31C UP 1:23:45   battery (-- without one), chip temperature, uptime
 ```
 
-Until the Cardputer answers, the third line says `WAITING` (or how long ago it was last heard). The Cardputer reads ~60–100 beacons a second: it skips the ones that arrive while it draws the screen. There's no shape and no phase on this link, so the slots mean something a little different:
+The Cardputer reads ~60–100 beacons a second: it skips the ones that arrive while it draws its screen. There's no shape and no phase on this link, so the slots mean something a little different:
 
 | Slot | LoRa | What moves it |
 |---|---|---|
