@@ -1,5 +1,5 @@
 // CARDRONE beacon for the Heltec WiFi LoRa 32 V3: the far end of LoRa mode.
-// Sends a Beacon 50 times a second on 869.85 MHz (src/link.h); the Cardputer measures
+// Sends a LoRa Beacon 25 times a second on 869.85 MHz (src/link.h); the Cardputer measures
 // how strongly each one arrives, and bodies moving through the flat change that.
 // Each beacon also carries a touch reading: touch GPIO2-7 (bare header pins work; a
 // wire or foil on one senses a hand from further away) and TCH rises. Between beacons
@@ -100,12 +100,10 @@ static void screenTask(void*) {
 void setup() {
   Serial.begin(115200);
   pinMode(LED_BUILTIN, OUTPUT);
-  int st = radio.beginFSK(LORA_FREQ, LORA_BR, LORA_DEV, LORA_RXBW, LORA_POWER, LORA_PREAMBLE, 1.8f);  // the V3's TCXO runs at 1.8 V
+  int st = radio.begin(LORA_FREQ, LORA_BW, LORA_SF, LORA_CR, LORA_SYNC, LORA_POWER, LORA_PREAMBLE, 1.8f);  // the V3's TCXO runs at 1.8 V
   radio.standbyXOSC = true;  // TCXO stays on: TX <-> RX in microseconds (src/link.h)
   uint8_t fb = RADIOLIB_SX126X_RX_TX_FALLBACK_MODE_STDBY_XOSC;  // and after each packet: begin set RC
   if (st == RADIOLIB_ERR_NONE) st = mod->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_RX_TX_FALLBACK_MODE, &fb, 1);
-  if (st == RADIOLIB_ERR_NONE) st = radio.setDataShaping(RADIOLIB_SHAPING_0_5);
-  if (st == RADIOLIB_ERR_NONE) st = radio.setSyncWord(LORA_SYNC, sizeof LORA_SYNC);
   while (st != RADIOLIB_ERR_NONE) {  // fast blink: no radio
     Serial.printf("radio init failed: %d\n", st);
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
@@ -122,7 +120,7 @@ void loop() {
   static TickType_t wake = xTaskGetTickCount();
   static Beacon bc;
   static uint32_t tLog = 0;
-  vTaskDelayUntil(&wake, pdMS_TO_TICKS(20));  // 50 beacons a second
+  vTaskDelayUntil(&wake, pdMS_TO_TICKS(LORA_PERIOD_MS));
   if (rxDone) {  // the Cardputer answered in the gap after the last beacon
     rxDone = false;
     v.irqs++;

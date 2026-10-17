@@ -48,7 +48,7 @@ The network screen opens on first boot, and later from `` ` `` → NETWORK. Your
 | AUTO | Hops channels 1–13 for ~3 s, counts CSI frames per transmitter, and locks onto the busiest. Re-surveys after 8 s of silence. No password. | whatever's busiest nearby |
 | JOIN | Associates, then pings the router 50×/s so it keeps answering. Needs the password. | steadiest, ~50 Hz+ |
 | LISTEN | Promiscuous on one network's channel, filtered to that router. No password. | depends on the router's traffic; beacons sent at 1 Mbps yield no CSI |
-| LORA | No WiFi: measures a Heltec's packets with the Cap LoRa-1262 (see below). | 50 Hz |
+| LORA | No WiFi: measures a Heltec's packets with the Cap LoRa-1262 (see below). | 25 Hz |
 
 The header shows the mode letter, channel and CSI rate, e.g. `A6 48Hz` (`LR 98Hz` in LoRa mode: packets per second), then the battery. The drone stays silent until you press `Space` (or a note key). Started before CSI arrives, it hums on the LFO.
 
@@ -91,19 +91,19 @@ Nothing sounds until `Space` (play). On the ADV, plugging headphones into the ja
 
 For when there's no WiFi to read, or to sense the whole flat through walls. Needs the [Cap LoRa-1262](https://docs.m5stack.com/en/cap/Cap_LoRa-1262) on the Cardputer and a [Heltec WiFi LoRa 32 V3](https://wiki.heltec.org/docs/devices/open-source-hardware/esp32-series/lora-32/wifi-lora-32-v3/Pin-diagram-guidance) (868 MHz version) running `src/heltec/beacon.cpp`; both antennas on. Power the Heltec anywhere (USB charger or its battery plug), then `` ` `` → NETWORK → LORA.
 
-The Heltec sends 50 five-byte GFSK beacons a second on 869.85 MHz at +5 dBm (EU 869.7–870 MHz: 5 mW ERP, no duty-cycle limit); its LED blinks slowly while it sends. The Cardputer measures the level of each beacon, averages them into 50 Hz frames, and refills the same eight slots, so the matrix and presets carry over. Four times a second it answers in the gap after a beacon (same frequency and power) with how well it hears the Heltec; both ends share the packet layout in `src/link.h`. The Heltec's OLED shows the link:
+The Heltec sends 25 five-byte LoRa beacons a second (SF6, 250 kHz wide: 869.725–869.975 MHz) at +5 dBm. That's inside EU 869.7–870 MHz, which allows 5 mW ERP with no duty-cycle limit; each beacon is ~11 ms on air, ~30% of the time. Its LED blinks slowly while it sends. The Cardputer measures the level of each beacon, draws a straight line between consecutive ones into 50 Hz frames (40 ms behind), and refills the same eight slots, so the matrix and presets carry over. Four times a second it answers in the gap after a beacon (same frequency and power) with how well it hears the Heltec; both ends share the packet layout in `src/link.h`. The Heltec's OLED shows the link:
 
 ```
 CARDRONE 869.85MHz +5dBm
 CARDPUTER HEARS
--62dBm         40/s        level and rate of the beacons the Cardputer reads (WAITING / LOST until it answers)
+-62dBm         25/s        level and rate of the beacons the Cardputer reads (WAITING / LOST until it answers)
 [##########          ]     signal: -110 to -40 dBm
 BACK -58dBm  4/s           the Cardputer's answers, as heard here
-TX 50/s  AIR 23%           beacons sent per second, share of time on air
+TX 25/s  AIR 30%           beacons sent per second, share of time on air
 BAT 3.95V 31C UP 1:23:45   battery (-- without one), chip temperature, uptime
 ```
 
-A task woken by the radio reads each one as it lands (all 50 a second, measured across a flat at −79 dBm) and restarts the receiver after it: on a weak link the receiver otherwise drifts off and hears nothing until restarted. There's no shape and no phase on this link, so the slots mean something a little different:
+A task woken by the radio reads each one as it lands. LoRa hears ~13 dB further than a 50 kbps FSK link would (receive limit ~−118 dBm): through several more walls, or several hundred metres to a kilometre outdoors. The serial log shows each beacon's SNR; near 0 dB is the edge. There's no shape and no phase on this link, so the slots mean something a little different:
 
 | Slot | LoRa | What moves it |
 |---|---|---|

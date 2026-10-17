@@ -168,7 +168,7 @@ static void onCsi(void*, wifi_csi_info_t* info) {  // WiFi task, core 0
   }
 }
 
-// LoRa mode: the Heltec (src/heltec/beacon.cpp) sends 50 beacons a second; the cap
+// LoRa mode: the Heltec (src/heltec/beacon.cpp) sends 25 beacons a second; the cap
 // on the Cardputer measures how strongly each arrives (Csi::level()) and answers a few
 // times a second with a Status for the Heltec's screen (src/link.h).
 static volatile uint32_t loraPkts = 0;
@@ -179,7 +179,8 @@ static bool loraUp = false;
 static volatile bool loraOn = false;      // loraTask may use the radio
 static SemaphoreHandle_t loraSem;         // given by the radio's interrupt
 static volatile uint32_t loraLast = 0, loraIrqs = 0, loraBad = 0, loraReplies = 0;  // last beacon (millis); diagnostics
-static volatile uint16_t loraChip[3];     // the radio's own counts over the last second: received, CRC errors, length errors
+static volatile uint16_t loraChip[3];     // the radio's own counts over the last second: received, CRC errors, header errors
+static volatile float loraSnr = 0;        // of the last beacon: how far above the noise (edge of range: near 0)
 static void IRAM_ATTR onLoraRx() {
   BaseType_t woke = pdFALSE;
   xSemaphoreGiveFromISR(loraSem, &woke);
@@ -199,15 +200,13 @@ static bool loraInit() {
   SPI.begin(40, 39, 14, 12);
   int st = -1;
   for (float tcxo : {3.0f, 1.8f, 0.f})  // 3.0 V as in M5's examples; fall back if this cap differs
-    if ((st = lora.beginFSK(LORA_FREQ, LORA_BR, LORA_DEV, LORA_RXBW, LORA_POWER, LORA_PREAMBLE, tcxo, true)) == RADIOLIB_ERR_NONE) {
+    if ((st = lora.begin(LORA_FREQ, LORA_BW, LORA_SF, LORA_CR, LORA_SYNC, LORA_POWER, LORA_PREAMBLE, tcxo, true)) == RADIOLIB_ERR_NONE) {
       Serial.printf("lora: radio up, TCXO %.1f V\n", tcxo);
       break;
     }
   lora.standbyXOSC = true;  // TCXO stays on: TX <-> RX in microseconds (src/link.h)
   uint8_t fb = RADIOLIB_SX126X_RX_TX_FALLBACK_MODE_STDBY_XOSC;  // and after each packet: begin set RC
   if (st == RADIOLIB_ERR_NONE) st = loraMod->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_RX_TX_FALLBACK_MODE, &fb, 1);
-  if (st == RADIOLIB_ERR_NONE) st = lora.setDataShaping(RADIOLIB_SHAPING_0_5);
-  if (st == RADIOLIB_ERR_NONE) st = lora.setSyncWord(LORA_SYNC, sizeof LORA_SYNC);
   if (st != RADIOLIB_ERR_NONE) return Serial.printf("lora: radio setup failed (%d)\n", st), false;
   loraSem = xSemaphoreCreateBinary();
   lora.setPacketReceivedAction(onLoraRx);
@@ -233,18 +232,23 @@ static bool loraStatus() {
 
 // Every beacon is read the moment it lands, rather than whenever loop() gets round to it
 // (it spends most of its time drawing, and the radio keeps only the latest packet). Frames
-// go out on a 50 Hz clock, the rate the smoothing and the wobble filters assume, holding
-// the last level when a beacon is missed.
+// go out on a 50 Hz clock, the rate the smoothing and the wobble filters assume, drawing a
+// straight line between the last two beacons one period behind (holding steps would light
+// the quick wobble bands), and holding the last level when beacons go missing.
 static void loraTask(void*) {
-  uint32_t tStatus = 0, tArm = 0, tStats = 0, tFrame = 0;
-  float lvl = -100, tch = 0;
+  uint32_t tStatus = 0, tArm = 0, tStats = 0, tFrame = 0, t0 = 0, t1 = 0;
+  float v0 = -100, v1 = -100, tch = 0;
   for (;;) {
     bool irq = xSemaphoreTake(loraSem, pdMS_TO_TICKS(5)) == pdTRUE;
     if (!loraOn) continue;
     uint32_t now = millis();
     if (now - tFrame > 200) tFrame = now - 20;  // after a stall, don't replay it frame by frame
-    for (; now - tFrame >= 20; tFrame += 20)
-      if (now - loraLast < 250) csi.level(lvl, tch);
+    for (; now - tFrame >= 20; tFrame += 20) {
+      if (now - loraLast >= 250) continue;
+      int32_t at = (int32_t)(tFrame - LORA_PERIOD_MS - t0), span = (int32_t)(t1 - t0);
+      float v = at <= 0 || span <= 0 ? v0 : at >= span ? v1 : v0 + (v1 - v0) * at / span;
+      csi.level(v, tch);
+    }
     if (now - tStats >= 1000) {  // diagnostics: what the chip itself received, whether or not it reached us
       uint8_t st[6] = {};
       loraMod->SPIreadStream(RADIOLIB_SX126X_CMD_GET_STATS, st, 6);
@@ -254,24 +258,25 @@ static void loraTask(void*) {
       tStats = now;
     }
     if (!irq) {  // nothing landed for 5 ms
-      // Re-arm when nothing has landed for a beacon and a half: on a weak link the receiver
-      // drifts off between packets and hears nothing more until it is restarted.
-      if (now - tArm >= 30) tArm = now, lora.startReceive();
+      // Re-arm after a few missed beacons, in case the receiver went deaf (the GFSK this
+      // replaced did on weak links). Rarely mid-packet: that one is lost.
+      if (now - tArm >= 3 * LORA_PERIOD_MS) tArm = now, lora.startReceive();
       continue;
     }
     loraIrqs = loraIrqs + 1;
     uint8_t b[sizeof(Status)];
     size_t len = lora.getPacketLength();
-    float dbm = lora.getRSSI(true);
+    float dbm = lora.getRSSI(true), snr = lora.getSNR();
     if (lora.readData(b, sizeof b) != RADIOLIB_ERR_NONE || !isPacket<Beacon>(b, len)) {
       loraBad = loraBad + 1;
       continue;
     }
     Beacon bc;
     memcpy(&bc, b, sizeof bc);
-    loraPkts = loraPkts + 1, loraLast = now, lvl = dbm, tch = bc.touch / 1000.f;
+    loraPkts = loraPkts + 1, loraLast = now, tch = bc.touch / 1000.f, loraSnr = snr;
+    t0 = t1, v0 = v1, t1 = now, v1 = dbm;
+    if (t0 == 0 || now - t0 > 4 * LORA_PERIOD_MS) t0 = now - LORA_PERIOD_MS, v0 = dbm;  // first, or after a gap: no ramp from stale
     if (now - tStatus >= 250) tStatus = now, loraReplies = loraReplies + loraStatus();  // the Heltec listens only until its next beacon
-    else lora.startReceive();  // fresh for the next beacon, 20 ms away (loraStatus restarts it too)
     tArm = now;
   }
 }
@@ -280,9 +285,9 @@ static void loraTask(void*) {
 static void loraLog(uint32_t now) {
   static uint32_t tLog = 0, pkts0 = 0;
   if (now - tLog < 1000) return;
-  Serial.printf("lora: irq %lu  beacons %lu  bad %lu  replies %lu  level %d dBm  chip rx %u crc %u len %u\n",
+  Serial.printf("lora: irq %lu  beacons %lu  bad %lu  replies %lu  level %d dBm  snr %.1f dB  chip rx %u crc %u hdr %u\n",
                 (unsigned long)loraIrqs, (unsigned long)(loraPkts - pkts0), (unsigned long)loraBad, (unsigned long)loraReplies,
-                csi.rssi, loraChip[0], loraChip[1], loraChip[2]);
+                csi.rssi, (float)loraSnr, loraChip[0], loraChip[1], loraChip[2]);
   tLog = now, pkts0 = loraPkts, loraIrqs = loraBad = loraReplies = 0;
 }
 #else
