@@ -2,6 +2,8 @@
 
 A drone synth for the M5Stack Cardputer ADV that the room plays. It reads WiFi Channel State Information (CSI): when people move, the multipath changes, and the 52-subcarrier fingerprint drives seven drone engines and an FX chain through an 8-slot mod matrix.
 
+Without WiFi, or to cover a whole flat through walls, **LoRa mode** reads a LoRa link instead: a Heltec board sends beacons, the Cap LoRa-1262 on the Cardputer measures how people moving change them (see [LoRa mode](#lora-mode)).
+
 How to play it: [manual.md](manual.md).
 
 ## Screens
@@ -30,12 +32,19 @@ pio run -t upload            # Cardputer ADV
 pio run -e heltec -t upload  # Heltec WiFi LoRa 32 V3 (only needed for LoRa mode)
 ```
 
-With both plugged in, add `--upload-port` (e.g. `/dev/cu.usbmodem101`, `/dev/ttyUSB0`, `COM5`; `pio device list` shows them). `pio device monitor -e heltec` shows what the Heltec is sending.
+With both plugged in, **always add `--upload-port`**: PlatformIO's board file gives the Heltec the same USB ID as the Cardputer, so auto-detect can flash the Heltec's firmware onto the Cardputer. `pio device list` shows the ports: the Cardputer is the ESP32-S3's own USB (`303A:1001`, e.g. `/dev/cu.usbmodem…`, `/dev/ttyACM0`), the Heltec its CP2102 (`10C4:EA60`, e.g. `/dev/cu.usbserial-…`, `/dev/ttyUSB0`).
+
+```sh
+pio run -t upload --upload-port /dev/cu.usbmodem1443101
+pio run -e heltec -t upload --upload-port /dev/cu.usbserial-0001
+```
+
+`pio device monitor -p <port>` shows what each prints: crash reasons and free heap at boot, and in LoRa mode the link once a second on both boards.
 
 - **Cardputer:** if it doesn't show up, hold G0 while plugging in USB.
 - **Heltec:** screw the 868 MHz antenna on first: transmitting without one can damage the radio. If the upload can't connect, hold PRG, tap RST, let go of PRG. This replaces whatever was on it (Meshtastic, say); [flasher.meshtastic.org](https://flasher.meshtastic.org) puts that back.
 
-Each build also writes a merged image (bootloader, partitions, boot_app0, app): `cardrone.bin` for the Cardputer, `cardrone-heltec.bin` for the Heltec. A prebuilt `cardrone.bin` is on the [releases page](https://github.com/vdo/cardrone/releases/latest). To flash an image without PlatformIO, open [ESPConnect](https://thelastoutpostworkshop.github.io/ESPConnect/), connect, go to Flash Firmware, load the `.bin`, set offset `0x0`, and flash.
+Each build also writes a merged image (bootloader, partitions, boot_app0, app): `cardrone.bin` for the Cardputer, `cardrone-heltec.bin` for the Heltec. Prebuilt ones are on the [releases page](https://github.com/vdo/cardrone/releases/latest). To flash an image without PlatformIO, open [ESPConnect](https://thelastoutpostworkshop.github.io/ESPConnect/), connect, go to Flash Firmware, load the `.bin`, set offset `0x0`, and flash.
 
 The boot screen shows the firmware version from `git describe`: `v0.3` on a release, `v0.3-2-gabc1234` between releases (`-dirty` with uncommitted changes).
 
@@ -50,7 +59,7 @@ The network screen opens on first boot, and later from `` ` `` → NETWORK. Your
 | LISTEN | Promiscuous on one network's channel, filtered to that router. No password. | depends on the router's traffic; beacons sent at 1 Mbps yield no CSI |
 | LORA | No WiFi: measures a Heltec's packets with the Cap LoRa-1262 (see below). | 25 Hz |
 
-The header shows the mode letter, channel and CSI rate, e.g. `A6 48Hz` (`LR 98Hz` in LoRa mode: packets per second), then the battery. The drone stays silent until you press `Space` (or a note key). Started before CSI arrives, it hums on the LFO.
+The header shows the mode letter, channel and CSI rate, e.g. `A6 48Hz` (`LR 25Hz` in LoRa mode: beacons per second), then the battery. The drone stays silent until you press `Space` (or a note key). Started before CSI arrives, it hums on the LFO.
 
 ## Audio out
 
@@ -103,7 +112,7 @@ TX 25/s  AIR 30%           beacons sent per second, share of time on air
 BAT 3.95V 31C UP 1:23:45   battery (-- without one), chip temperature, uptime
 ```
 
-A task woken by the radio reads each one as it lands. LoRa hears ~13 dB further than a 50 kbps FSK link would (receive limit ~−118 dBm): through several more walls, or several hundred metres to a kilometre outdoors. The serial log shows each beacon's SNR; near 0 dB is the edge. There's no shape and no phase on this link, so the slots mean something a little different:
+A task woken by the radio reads each one as it lands. Measured across a flat, through walls: every beacon at −74 to −82 dBm. SF6's receive limit is around −118 dBm, so there's room for several more walls, or a few hundred metres to a kilometre outdoors with line of sight (estimated). The serial log shows each beacon's level and SNR; an SNR near 0 dB is the edge of range. There's no shape and no phase on this link, so the slots mean something a little different:
 
 | Slot | LoRa | What moves it |
 |---|---|---|
@@ -135,10 +144,10 @@ The LFO shape is saved with presets; the theme is saved on the device.
 
 - `MOD_PROFILES` in `src/dsp.h`: glide times (seconds) for CSI modulation and scale steps behind the SHARP / NORMAL / SMOOTH / SLOW option.
 - `kMinRange` in `src/csi.h`: raise it if a still room still wiggles the mods, lower it if motion reads weakly.
-- LoRa mode, in `src/csi.h`: `kLoraFloor` (dB of wobble that can't read as full scale: raise it if a still link twitches), `kLvlRange` (dB from the empty flat for full LVL), `kTouchMin` (smallest touch that can read as full TCH). On the Heltec (`src/heltec/beacon.cpp`): `kTouchNoise` and `POWER`.
+- LoRa mode, in `src/csi.h`: `kLoraFloor` (dB of wobble that can't read as full scale: raise it if a still link twitches), `kLvlRange` (dB from the empty flat for full LVL), `kTouchMin` (smallest touch that can read as full TCH), `kWobLo` / `kWobHi` (the wobble spectrum's span) and the `0.4` tilt in `level()`. In `src/link.h`: `LORA_PERIOD_MS` and `LORA_POWER` (keep it within 5 mW ERP for your antenna). On the Heltec (`src/heltec/beacon.cpp`): `kTouchNoise`.
 - The footer's `DSP %` shows synth load on core 1, which audio has to itself (WiFi and the UI share core 0). Keep it well under 100.
 - After a crash, the splash screen says what kind it was: panic, watchdog or brownout.
-- Free heap is printed on USB serial after WiFi comes up.
+- Free heap is printed on USB serial at boot (`pio device monitor`).
 
 ## Check
 
