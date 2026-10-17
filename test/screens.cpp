@@ -26,7 +26,7 @@ template <class T> static T constrain(T v, T lo, T hi) { return v < lo ? lo : v 
 static uint32_t esp_random() { return (uint32_t)rand() * 2654435761u; }
 struct String : std::string { using std::string::string; };
 static struct { void printf(const char*, ...) {} void println(const char*) {} } Serial;
-static struct { uint32_t getFreeHeap() { return 61000; } uint32_t getMaxAllocHeap() { return 40000; } uint32_t getMinFreeHeap() { return 52000; } } ESP;
+static struct { uint32_t getFreeHeap() { return 61000; } uint32_t getMaxAllocHeap() { return 40000; } uint32_t getMinFreeHeap() { return 52000; } void restart() {} } ESP;
 enum { ESP_RST_POWERON, ESP_RST_PANIC, ESP_RST_INT_WDT, ESP_RST_TASK_WDT, ESP_RST_WDT, ESP_RST_BROWNOUT };
 static int esp_reset_reason() { return ESP_RST_POWERON; }
 constexpr int APP_CPU_NUM = 1, ESP_OK = 0;

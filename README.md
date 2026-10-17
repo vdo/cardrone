@@ -54,7 +54,7 @@ Nothing sounds until `Space` (play). On the ADV, plugging headphones into the ja
 | `s d g h j` | black notes C# D# F# G# A# |
 | `Shift` + note | the note an octave up; the next plain note drops back |
 | `t` | interval of voice 2: fifth → fourth → octave → third (minor or major, from the scale) |
-| `a` | auto drift: the root wanders among nearby scale notes every 20–60 s, faster when the room moves (`~` after the scale) |
+| `a` | tap: drift, the root wanders among nearby scale notes every 20–60 s, faster when the room moves (`~` after the scale). Hold 3 s: **autopilot** (header shows `AUTO`): drift, params easing toward new random targets every 1–2 min, a matrix slot re-rolled every 20–45 s, and every 3–6 min a new section faded in (scale; often engine, voices, interval, LFO shape, key). Pitch, noise, level and MIDI-held params stay put. Any `a` press stops it |
 | `f` | freeze: the room's mods hold where they are (footer shows `FRZ`); the LFO keeps moving |
 | hold `q` | fade the drone out slowly; release to swell back |
 | `u` | undo: back through randomize, preset loads, notes, engine, voices, interval and effect switches (8 steps) |
@@ -69,12 +69,37 @@ Nothing sounds until `Space` (play). On the ADV, plugging headphones into the ja
 | `e` | calibrate an empty-room baseline: 5 s countdown to leave the room, then ~3 s capture (any key cancels); LO/MID/HI then measure deviation from it |
 | `w` / `l` then `1`–`8` | save (write) / load preset to `/cardrone/presetN.json` on SD |
 | `-` `=` | volume |
-| `` ` `` | options: audio out, volume, mod profile (sharp, normal, smooth, slow), LFO shape (sine, triangle, saw, square, S&H, drift) and rate, theme (green, yellow, red, blue, B&W), network, calibrate |
+| `` ` `` | options: audio out, volume, mod profile (sharp, normal, smooth, slow), LFO shape (sine, triangle, saw, square, S&H, drift) and rate, theme (green, yellow, red, blue, B&W), network, BLE MIDI, calibrate |
 | `i` | key help overlay |
 | `;` `.` | up / down (Params, Matrix) |
 | `,` `/` | adjust value (Params, Matrix) |
 | `Enter` | on Params, toggles the selected param's FX; on Matrix, moves to the next column (src → dest → depth); elsewhere play / stop |
 | `Del` | Matrix: clear slot |
+
+## BLE MIDI
+
+Off by default: `` ` `` → BLE MIDI, Enter (it restarts, since BLE and WiFi share the radio). It then advertises the standard BLE MIDI service as `CARDRONE` (macOS: Audio MIDI Setup → MIDI Studio → Bluetooth). The footer shows `BT` while connected. Omni: every channel is heard.
+
+- **Note on**: root and octave (glides there, starts playback). Note off is ignored.
+- **CC**: sets the param and **takes it over**: matrix slots aimed at it fade out, so the controller replaces the CSI modulation (its name turns amber on Params). **CC 121** (reset all controllers), or disconnecting, hands everything back to the room.
+- **Pitch bend**: PITCH (±12 semitones, scale-quantised), taken over like a CC.
+
+| CC | Param | | CC | Param |
+|---|---|---|---|---|
+| 20 | PITCH | | 28 | DRIVE |
+| 21 | CUTOFF | | 29 | CRUSH |
+| 22 | RESO | | 30 | RING |
+| 23 | TIMBRE | | 31 | CHORUS |
+| 24 | SPREAD | | 32 | D.TIME |
+| 25 | NOISE | | 33 | D.FB |
+| 26 | LFO | | 34 | REVERB |
+| 27 | LEVEL | | 35 | SHIMMR |
+| 1 | TIMBRE (mod wheel) | | 74 | CUTOFF |
+| 7 | LEVEL (volume) | | 91 | REVERB |
+| 71 | RESO | | 93 | CHORUS |
+| 121 | release all params to CSI | | | |
+
+FX switches stay on the keys (Fn + 1–7). With BLE on, WiFi can't run with power save off (the coexistence scheme requires modem sleep), so the CSI rate drops, most of all in JOIN mode.
 
 ## Mod sources (from CSI)
 
@@ -112,7 +137,7 @@ To re-render the screenshots after a UI change:
 c++ -std=c++17 -O2 -Isrc -I.pio/libdeps/cardrone/M5GFX/src/lgfx/Fonts test/screens.cpp -lz -o /tmp/screens && /tmp/screens docs
 ```
 
-The host test exercises the scale quantiser, preset JSON (including hostile input), CSI motion response, and renders every engine. With a directory argument it also writes WAVs there.
+The host test exercises the scale quantiser, preset JSON (including hostile input), CSI motion response, the BLE MIDI parser and takeover, and renders every engine. With a directory argument it also writes WAVs there.
 
 ## License
 

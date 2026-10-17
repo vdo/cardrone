@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <initializer_list>
 #include "dsp.h"
+#include "midi.h"
 
 static Synth syn;  // ~110 KB of buffers: keep off the stack
 static Csi csi;
@@ -120,6 +121,44 @@ int main(int argc, char** argv) {
     assert(before > 0.8f && syn.eff[P_CUTOFF] > before - 0.05f);  // no jump
     for (int i = 0; i < 300; i++) syn.render(pcm, 512, src1, flat);
     assert(fabsf(syn.eff[P_CUTOFF] - 0.45f) < 0.02f && syn.eff[P_REVERB] > 0.95f);  // fully moved
+  }
+
+  // BLE MIDI packets: timestamps, running status (with and without a timestamp), real-time
+  // bytes, SysEx spanning two packets, program change.
+  {
+    BleMidi m;
+    int got[8][3], n = 0;
+    auto cb = [&](uint8_t s, uint8_t a, uint8_t b) { got[n][0] = s, got[n][1] = a, got[n][2] = b, n++; };
+    const uint8_t p1[] = {0x80, 0x81, 0xB0, 74, 100, 0x82, 71, 5, 1, 2, 0x83, 0xF8, 0x84, 0x90, 60, 90};
+    m.packet(p1, sizeof p1, cb);
+    const uint8_t p2[] = {0x80, 0x81, 0xF0, 0x7E, 0x01};  // SysEx starts...
+    m.packet(p2, sizeof p2, cb);
+    const uint8_t p3[] = {0x80, 0x02, 0x03, 0x82, 0xF7, 0x83, 0xC2, 5, 0x84, 0xE0, 0, 0x40};  // ...ends, PC, bend
+    m.packet(p3, sizeof p3, cb);
+    const int want[][3] = {{0xB0, 74, 100}, {0xB0, 71, 5}, {0xB0, 1, 2}, {0x90, 60, 90}, {0xC2, 5, 0}, {0xE0, 0, 0x40}};
+    assert(n == 6);
+    for (int i = 0; i < n; i++) assert(got[i][0] == want[i][0] && got[i][1] == want[i][1] && got[i][2] == want[i][2]);
+    assert(ccParam(74) == P_CUTOFF && ccParam(20) == P_PITCH && ccParam(35) == P_SHIMMER && ccParam(36) == -1);
+  }
+
+  // A param MIDI holds lets go of the matrix (gliding, no jump), and takes it back on release.
+  {
+    syn.pt = DEFAULT_PATCH;
+    for (auto& s : syn.pt.mod) s.depth = 0;
+    syn.pt.mod[0] = {S_MOT, P_CUTOFF, 40};
+    float src1[NSRC] = {}, flat[NSC];
+    src1[S_MOT] = 1;
+    for (float& f : flat) f = 0.5f;
+    for (int i = 0; i < 600; i++) syn.render(pcm, 512, src1, flat);
+    float before = syn.eff[P_CUTOFF];
+    syn.midiOwn = 1 << P_CUTOFF;
+    syn.render(pcm, 512, src1, flat);
+    assert(before > 0.8f && syn.eff[P_CUTOFF] > before - 0.05f);
+    for (int i = 0; i < 300; i++) syn.render(pcm, 512, src1, flat);
+    assert(fabsf(syn.eff[P_CUTOFF] - syn.pt.p[P_CUTOFF]) < 0.01f);  // the room no longer moves it
+    syn.midiOwn = 0;
+    for (int i = 0; i < 300; i++) syn.render(pcm, 512, src1, flat);
+    assert(syn.eff[P_CUTOFF] > 0.8f);
   }
 
   // Note keys set the root: the drone slides there instead of jumping.

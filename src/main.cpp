@@ -10,6 +10,7 @@
 #include "esp_system.h"
 #include "esp_wifi.h"
 #include "ping/ping_sock.h"
+#include <NimBLEDevice.h>
 #endif
 #include <functional>
 #ifndef CARDRONE_VERSION  // merge_bin.py stamps `git describe` here
@@ -17,6 +18,7 @@
 #endif
 #include "csi.h"
 #include "dsp.h"
+#include "midi.h"
 
 constexpr int W = 240, H = 135, BUF = 512, WF_ROWS = 48;
 constexpr int HIST = 56;  // sparkline ends at x=136, before the DSP/VOL readout
@@ -57,7 +59,7 @@ static void applyTheme() {
 
 enum Page { PG_WATERFALL, PG_BARS, PG_PARAMS, PG_MATRIX, NPAGE };
 enum Overlay { OV_NONE, OV_HELP, OV_OPTIONS };
-constexpr int NOPT = 8;  // options: audio out, volume, mod profile, lfo shape, lfo rate, theme, network, calibrate
+constexpr int NOPT = 9;  // options: audio out, volume, mod profile, lfo shape, lfo rate, theme, network, ble midi, calibrate
 static const char* const HINTS[NPAGE] = {"TAB view  z-m notes  r random  i help", "e calibrate  w/l preset  i help",
                                          ";. select  ,/ adjust  ENTER fx on/off", ";. row  ENTER column  ,/ adj  DEL off"};
 // M5Unified doubles a mono stream, then scales by 32*vol^2*255^2/2^36: 180 is
@@ -73,8 +75,9 @@ static int batt = -1;  // %, -1 = unknown
 constexpr uint32_t CAL_COUNTDOWN_MS = 5000;  // time to leave the room before the empty-room capture
 static uint32_t calAt = 0;                   // when the countdown ends (millis), 0 = no countdown
 static bool calibrating() { return calAt || csi.calLeft > 0; }
-constexpr uint32_t R_HOLD_MS = 3000;  // r: let go sooner for new params, hold this long for new mods only
-static uint32_t rHeldAt = 0;          // when r went down, while it's held and nothing has fired yet
+constexpr uint32_t HOLD_MS = 3000;  // r and a: a tap does one thing, holding this long another
+static uint32_t holdAt = 0;         // when r or a went down, while it's held and nothing has fired yet
+static char holdKey = 0;
 
 // u: undo, back through the patches from before big changes (randomize, load, notes, engine...).
 constexpr int UNDO_N = 8;
@@ -86,11 +89,19 @@ static void remember() {
   undoBuf[undoN++] = syn.pt;
 }
 static int curNote() { return 12 * (syn.pt.octave + 1) + syn.pt.root; }
-// a: auto drift. The root wanders among the scale's notes within a fifth of home.
+// a: drift. The root wanders among the scale's notes within a fifth of home.
 static bool drift = false;
 static uint32_t driftAt = 0;
 static int driftHome = 0;   // a note number, as curNote()
+// Hold a: autopilot (see autopilot()). autoSwapAt: a section change is fading out.
+static bool autoOn = false;
+static uint32_t autoSwapAt = 0;
 static bool upOct = false;  // the last note was Shift+note: one octave above the octave setting
+static void goNote(int note) {  // a MIDI note number, folded into the octaves 0-5
+  while (note < 12) note += 12;
+  while (note > 83) note -= 12;
+  syn.pt.octave = note / 12 - 1, syn.pt.root = note % 12, upOct = false;
+}
 static uint8_t wf[WF_ROWS][NSC];
 static int wfHead = 0, histHead = 0;
 static float motHist[HIST], srcPeak[NSRC], barPeak[NSC];
@@ -100,6 +111,12 @@ static void say(const char* s) {
   snprintf(toast, sizeof toast, "%s", s);
   toastUntil = millis() + 1800;
 }
+
+// BLE MIDI: notes set the root; CCs and pitch bend take params over from the room.
+static bool bleOn = false;               // option, saved in NVS; BLE starts at boot
+static volatile bool bleLinked = false;  // a DAW, phone or controller is connected
+static uint8_t midiQ[64][3];             // BLE task -> loop(): messages wait here
+static volatile uint8_t midiW = 0, midiR = 0;
 
 // ── audio ────────────────────────────────────────────────────────────────────
 static void audioTask(void*) {
@@ -170,7 +187,7 @@ static void radioOff() {  // CSI off, disassociated, no background reconnect hop
 }
 
 static void csiEnable() {
-  WiFi.setSleep(false);  // modem sleep starves the CSI rate
+  WiFi.setSleep(bleOn);  // modem sleep starves the CSI rate, but with BLE on the radio must nap (or WiFi aborts)
   wifi_promiscuous_filter_t pf = {WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA};
   esp_wifi_set_promiscuous_filter(&pf);
   esp_wifi_set_promiscuous(true);
@@ -279,8 +296,14 @@ static void drawHeader() {
   const Patch& P = syn.pt;
   cv.fillRect(0, 0, W, 12, C_BAR);
   cv.drawFastHLine(0, 12, W, C_MID);
-  cv.setTextColor(C_HI);
-  cv.drawString("CARDRONE", 3, 2);
+  if (autoOn) {  // autopilot: the title becomes a pill
+    cv.fillRoundRect(1, 1, 30, 10, 2, C_HI);
+    cv.setTextColor(C_BG);
+    cv.drawString("AUTO", 4, 2);
+  } else {
+    cv.setTextColor(C_HI);
+    cv.drawString("CARDRONE", 3, 2);
+  }
   const char* en = ENGINE_NAME[P.engine];
   int ew = cv.textWidth(en) + 6;
   cv.fillRoundRect(55, 1, ew, 10, 2, ENGINE_COLOR[P.engine]);
@@ -352,7 +375,7 @@ static void drawParams() {
     int x = 4 + (i / 8) * 118, y = 16 + (i % 8) * 12, bx = x + 40, bw = 52;
     bool sel = i == pCur, off = (PARAM_FX[i] && !(P.fx & PARAM_FX[i])) || (i == P_SHIMMER && !(P.fx & FX_REVERB));
     if (sel) cv.fillRect(x - 2, y - 2, 116, 12, C_BAR);
-    cv.setTextColor(off ? C_DIM : sel ? C_HOT : C_MID);
+    cv.setTextColor(off ? C_DIM : syn.midiOwn >> i & 1 ? C_WARN : sel ? C_HOT : C_MID);  // amber: MIDI holds it
     cv.drawString(PARAM_NAME[i], x, y);
     cv.drawRect(bx, y, bw, 8, C_DIM);
     cv.fillRect(bx + 1, y + 1, (int)(P.p[i] * (bw - 2)), 6, off ? C_DIM : C_MID);
@@ -367,7 +390,7 @@ static void drawMatrix() {
   for (int r = 0; r < NSLOT; r++) {
     const Slot& s = syn.pt.mod[r];
     int y = 16 + r * 12;
-    bool sel = r == mRow, live = s.depth != 0;
+    bool sel = r == mRow, live = s.depth != 0 && !(syn.midiOwn >> s.dst & 1);
     auto col = [&](int c) { return sel && mCol == c ? C_HOT : live ? C_MID : C_DIM; };
     if (sel) cv.fillRect(0, y - 2, W, 12, C_BAR);
     char t[8];
@@ -396,10 +419,10 @@ static void drawHelp() {
   static const char* const K[][2] = {  // three columns of nine: keys <= 3 chars, notes <= 9
       {"SPC", "play/stop"}, {"z-m", "notes"},     {"s-j", "sharps"},    {"SH", "note +8va"}, {"1-7", "engine"},
       {"p", "voices"},      {"t", "interval"},    {"9 0", "octave"},    {"[ ]", "root -/+"}, {"k", "scale"},
-      {"a", "drift"},       {"f", "freeze"},      {"q", "hold:fade"},   {"u", "undo"},       {"r", "rnd/hold"},
-      {"e", "calibrate"},   {"TAB", "page"},      {";.", "up/down"},    {",/", "adjust"},    {"ENT", "edit/play"},
-      {"DEL", "clr slot"},  {"Fn", "+1-7: fx"},   {"w l", "save/load"}, {"- =", "volume"},   {"`", "options"},
-      {"i", "help"}};
+      {"a", "drift"},       {"a", "hold:auto"},   {"f", "freeze"},      {"q", "hold:fade"},  {"u", "undo"},
+      {"r", "rnd/hold"},    {"e", "calibrate"},   {"TAB", "page"},      {";.", "up/down"},   {",/", "adjust"},
+      {"ENT", "edit/play"}, {"DEL", "clr slot"},  {"Fn", "+1-7: fx"},   {"w l", "save/load"}, {"- =", "volume"},
+      {"`", "options"},     {"i", "help"}};
   for (int i = 0; i < (int)(sizeof K / sizeof *K); i++) {
     int x = 1 + (i / 9) * 80, y = 15 + (i % 9) * 11;
     cv.setTextColor(C_HI);
@@ -410,11 +433,11 @@ static void drawHelp() {
 }
 
 static void drawOptions() {
-  static const char* const names[NOPT] = {"AUDIO OUT", "VOLUME",  "MOD PROFILE", "LFO SHAPE",
-                                          "LFO RATE",  "THEME",   "NETWORK",     "CALIBRATE"};
+  static const char* const names[NOPT] = {"AUDIO OUT", "VOLUME",  "MOD PROFILE", "LFO SHAPE", "LFO RATE",
+                                          "THEME",     "NETWORK", "BLE MIDI",    "CALIBRATE"};
   const Patch& P = syn.pt;
   for (int i = 0; i < NOPT; i++) {
-    int y = 16 + i * 11;
+    int y = 15 + i * 10;
     bool sel = i == optCur;
     char v[40];
     if (i == 0) snprintf(v, sizeof v, "%s", audioOn ? "ON" : "OFF (muted)");
@@ -424,8 +447,9 @@ static void drawOptions() {
     if (i == 4) snprintf(v, sizeof v, "%.2f Hz", lfoHz(P.p[P_LFO]));
     if (i == 5) snprintf(v, sizeof v, "%s", THEMES[theme].name);
     if (i == 6) netDesc(v, sizeof v);
-    if (i == 7) snprintf(v, sizeof v, "%s", csi.calibrated ? "baseline set  >" : "empty room  >");
-    if (sel) cv.fillRect(0, y - 2, W, 11, C_BAR);
+    if (i == 7) snprintf(v, sizeof v, "%s", !bleOn ? "OFF  ENTER: on + restart" : bleLinked ? "ON  connected" : "ON  waiting as CARDRONE");
+    if (i == 8) snprintf(v, sizeof v, "%s", csi.calibrated ? "baseline set  >" : "empty room  >");
+    if (sel) cv.fillRect(0, y - 1, W, 10, C_BAR);
     cv.setTextColor(sel ? C_HOT : C_MID);
     cv.drawString(names[i], 8, y);
     cv.setTextColor(sel ? C_HI : C_DIM);
@@ -434,7 +458,7 @@ static void drawOptions() {
   cv.setTextColor(C_DIM);
   char m[48];  // lowest free heap since boot: if crashes return, is it memory?
   snprintf(m, sizeof m, "min free RAM %uK   jack = speaker off", ESP.getMinFreeHeap() / 1024);
-  cv.drawString(m, 8, 104);
+  cv.drawString(m, 8, 105);
 }
 
 // Countdown to leave the room, then the capture with a progress bar.
@@ -475,20 +499,22 @@ static void drawFooter() {
     cv.drawFastVLine(24 + i * 2, 124 - h, h, ramp[6 + i * 25 / HIST]);
   }
   char s[24];
-  if (!playing) snprintf(s, sizeof s, "STOPPED");
-  else if (audioOn) snprintf(s, sizeof s, "DSP%3d%%  VOL%3d", (int)(dspLoad * 100), vol * 100 / VOL_MAX);
-  else snprintf(s, sizeof s, "DSP%3d%%  MUTED", (int)(dspLoad * 100));
+  const char* bt = bleLinked ? "BT " : "";  // a MIDI link is up
+  if (!playing) snprintf(s, sizeof s, "%sSTOPPED", bt);
+  else if (audioOn) snprintf(s, sizeof s, "%sDSP%3d%% VOL%3d", bt, (int)(dspLoad * 100), vol * 100 / VOL_MAX);
+  else snprintf(s, sizeof s, "%sDSP%3d%% MUTED", bt, (int)(dspLoad * 100));
   cv.setTextColor(playing ? C_DIM : C_WARN);
   cv.drawRightString(s, W - 3, 116);
-  char hold[40] = "";  // r held: count down to the mod roll
-  if (rHeldAt)
-    snprintf(hold, sizeof hold, "let go: params   hold: mods in %lu",
-             (unsigned long)(R_HOLD_MS - min(R_HOLD_MS, (uint32_t)(millis() - rHeldAt)) + 999) / 1000);
+  char hold[40] = "";  // r or a held: count down to the hold action
+  if (holdAt)
+    snprintf(hold, sizeof hold, "let go: %s   hold: %s in %lu", holdKey == 'r' ? "params" : "drift",
+             holdKey == 'r' ? "mods" : "AUTO", (unsigned long)(HOLD_MS - min(HOLD_MS, (uint32_t)(millis() - holdAt)) + 999) / 1000);
   bool note = pending || millis() < toastUntil || *hold || syn.duck;
   bool idle = !playing && !overlay && !calibrating();  // pulse "ENTER play" while silent
   cv.setTextColor(note ? C_WARN : idle && millis() / 500 % 2 ? C_HI : C_DIM);
   cv.drawString(pending == 'w'              ? "SAVE to slot 1-8 (other key cancels)"
                 : pending                   ? "LOAD slot 1-8 (other key cancels)"
+                : autoSwapAt                ? "AUTO: next section..."
                 : syn.duck                  ? "FADING OUT  release q to swell back"
                 : *hold                     ? hold
                 : note                      ? toast
@@ -796,35 +822,168 @@ static void saveByte(const char* key, uint8_t v) {  // device settings in NVS
   p.end();
 }
 
-// New params in drone-friendly ranges; PITCH, NOISE and LEVEL stay put (lo < 0).
-static void randomize() {
-  remember();
+static int rndN(int n) { return (int)(esp_random() % n); }
+static float rnd01() { return (esp_random() >> 8) * (1 / 16777216.f); }
+
+// New params in drone-friendly ranges, into p (the patch, or the autopilot's targets).
+// PITCH, NOISE and LEVEL stay put (lo < 0), and so does whatever MIDI holds.
+static void rollParams(float* p) {
   static const float lo[NPARAM] = {-1, .25f, 0, 0, 0, -1, 0, -1, 0, 0, 0, .2f, .1f, .1f, .3f, -1};
   static const float hi[NPARAM] = {0, .7f, .6f, 1, .7f, 0, .6f, 0, .5f, .25f, .5f, .9f, .9f, .7f, .9f, 0};
-  auto u = [] { return (esp_random() >> 8) * (1 / 16777216.f); };  // 0..1
   for (int i = 0; i < NPARAM; i++)
-    if (lo[i] >= 0) syn.pt.p[i] = lo[i] + (hi[i] - lo[i]) * u();
+    if (lo[i] >= 0 && !(syn.midiOwn >> i & 1)) p[i] = lo[i] + (hi[i] - lo[i]) * rnd01();
   // Shimmer is a strong colour: usually left out, otherwise just a touch.
-  syn.pt.p[P_SHIMMER] = esp_random() % 4 ? 0 : 0.05f + 0.25f * u();
+  if (!(syn.midiOwn >> P_SHIMMER & 1)) p[P_SHIMMER] = rndN(4) ? 0 : 0.05f + 0.25f * rnd01();
+}
+
+static void randomize() {
+  remember();
+  rollParams(syn.pt.p);
   say("RANDOMIZED");
 }
 
-// Held r: new routings, depths and LFO shape only, params untouched. Drone-safe: no PITCH, LEVEL, NOISE,
-// CRUSH or SHIMMER targets, depths of 10-40 (mostly positive), about a quarter of slots off.
+// A drone-safe routing: no PITCH, LEVEL, NOISE, CRUSH or SHIMMER targets, depths of
+// 10-40 (mostly positive), about a quarter of slots off.
+static void rollSlot(Slot& s) {
+  static const uint8_t DST[] = {P_CUTOFF, P_RESO, P_TIMBRE, P_SPREAD, P_LFO,  P_DRIVE,
+                                P_RING,   P_CHORUS, P_DTIME, P_DFB,   P_REVERB};
+  s.src = rndN(NSRC);
+  s.dst = DST[rndN(sizeof DST)];
+  s.depth = rndN(4) == 0 ? 0 : (rndN(4) == 0 ? -5 : 5) * (2 + rndN(7));
+}
+
+// Held r: new routings, depths and LFO shape only, params untouched.
 static void randomizeMods() {
   remember();
-  static const uint8_t DST[] = {P_CUTOFF, P_RESO, P_TIMBRE, P_SPREAD, P_LFO,  P_DRIVE,
-                                P_RING,   P_CHORUS, P_DTIME, P_DFB,   P_REVERB};  // never SHIMMER
-  auto rnd = [](int n) { return (int)(esp_random() % n); };
-  for (Slot& s : syn.pt.mod) {
-    s.src = rnd(NSRC);
-    s.dst = DST[rnd(sizeof DST)];
-    s.depth = rnd(4) == 0 ? 0 : (rnd(4) == 0 ? -5 : 5) * (2 + rnd(7));
-  }
-  syn.pt.lfo = rnd(NLFO);
+  for (Slot& s : syn.pt.mod) rollSlot(s);
+  syn.pt.lfo = rndN(NLFO);
   page = PG_MATRIX;  // show the new routings
   say("RANDOMIZED MODS");
 }
+
+static void toggleDrift() {
+  drift = !drift;
+  driftHome = curNote();
+  driftAt = millis() + 10000;
+  say(drift ? "DRIFT: the root wanders the scale" : "DRIFT off");
+}
+
+// ── autopilot (hold a) ───────────────────────────────────────────────────────
+// It plays itself: the root drifts, params ease toward new random targets, a matrix
+// slot is re-rolled every half minute or so, and every 3-6 minutes a new section
+// fades in: another scale, often another engine, voicing or key.
+static uint32_t autoParAt, autoModAt, autoSecAt, autoTick;  // when the next of each is due
+static float autoTo[NPARAM];  // where the params are easing to; < 0: left alone
+static uint32_t inMs(uint32_t lo, uint32_t hi) { return millis() + lo + esp_random() % (hi - lo); }
+
+static void setAuto(bool on) {
+  if (on) remember();  // u gets back to the patch from before
+  autoOn = drift = on;
+  driftHome = curNote();
+  driftAt = millis() + 10000;
+  for (float& t : autoTo) t = -1;
+  autoParAt = millis();  // first targets right away
+  autoModAt = inMs(15000, 30000);
+  autoSecAt = inMs(180000, 360000);
+  if (autoSwapAt) syn.duck = false, autoSwapAt = 0;
+  say(on ? "AUTO: it plays itself (a stops it)" : "AUTO off");
+}
+
+static void autopilot(uint32_t now) {
+  Patch& P = syn.pt;
+  if (now - autoTick >= 100) {  // params ease toward their targets (~25 s); what MIDI holds stays put
+    autoTick = now;
+    for (int i = 0; i < NPARAM; i++)
+      if (autoTo[i] >= 0 && !(syn.midiOwn >> i & 1)) P.p[i] += (autoTo[i] - P.p[i]) * 0.004f;
+  }
+  if (now >= autoParAt) rollParams(autoTo), autoParAt = inMs(60000, 120000);
+  if (now >= autoModAt) rollSlot(P.mod[rndN(NSLOT)]), autoModAt = inMs(20000, 45000);
+  if (now >= autoSecAt && !autoSwapAt) syn.duck = true, autoSwapAt = now + 5000;  // new section: fade out...
+  if (autoSwapAt && now >= autoSwapAt) {  // ...change under the silence, swell back in
+    int sc;
+    do sc = rndN(NSCALE - 1);  // never chromatic: it drifts too freely
+    while (sc == P.scale);
+    P.scale = sc;
+    if (rndN(2)) P.engine = rndN(NENGINE);
+    if (!rndN(3)) P.voices = 1 + rndN(3);
+    if (!rndN(3)) P.interval = rndN(NINTERVAL);
+    if (!rndN(3)) P.lfo = rndN(NLFO);
+    if (!rndN(3)) {  // key change: up a fourth or down a fifth
+      int n = driftHome + (rndN(2) ? 5 : -7);
+      driftHome = n < 24 ? n + 12 : n > 71 ? n - 12 : n;
+      goNote(driftHome);
+    }
+    syn.duck = false;
+    autoSwapAt = 0;
+    autoSecAt = inMs(180000, 360000);
+  }
+}
+
+// ── MIDI ─────────────────────────────────────────────────────────────────────
+static void midiEvent(uint8_t st, uint8_t d1, uint8_t d2) {
+  int i = -1;
+  float v = d2 / 127.f;
+  switch (st & 0xF0) {
+    case 0x90:
+      if (!d2) break;  // velocity 0 is a note off: the drone holds
+      goNote(d1);
+      driftHome = curNote();
+      playing = true;
+      break;
+    case 0xB0:
+      if (d1 == CC_RELEASE) syn.midiOwn = 0, say("MIDI: params back to the room");
+      i = ccParam(d1);
+      break;
+    case 0xE0:  // pitch bend: PITCH, +-12 semitones through the scale
+      i = P_PITCH;
+      v = (d2 << 7 | d1) / 16383.f;
+      break;
+  }
+  if (i < 0) return;
+  syn.pt.p[i] = v;  // glides like a knob
+  if (!(syn.midiOwn >> i & 1)) {
+    syn.midiOwn |= 1 << i;
+    char s[32];
+    snprintf(s, sizeof s, "MIDI has %s", PARAM_NAME[i]);
+    say(s);
+  }
+}
+
+#ifndef CARDRONE_HOST
+// The standard BLE MIDI service: macOS Audio MIDI Setup, iOS/Android apps and BLE
+// controllers find it as "CARDRONE". Callbacks run in the NimBLE task (core 0).
+struct MidiLink : NimBLEServerCallbacks, NimBLECharacteristicCallbacks {
+  BleMidi parse;
+  void onConnect(NimBLEServer*) override { bleLinked = true; }
+  void onDisconnect(NimBLEServer*) override { bleLinked = false; }  // NimBLE advertises again by itself
+  void onWrite(NimBLECharacteristic* c) override {
+    NimBLEAttValue v = c->getValue();
+    parse.packet(v.data(), v.length(), [](uint8_t st, uint8_t a, uint8_t b) {
+      uint8_t w = midiW, next = (w + 1) % 64;
+      if (next == midiR) return;  // loop() is behind: drop
+      midiQ[w][0] = st, midiQ[w][1] = a, midiQ[w][2] = b;
+      midiW = next;
+    });
+  }
+};
+
+static void midiBegin() {
+  static MidiLink link;
+  NimBLEDevice::init("CARDRONE");
+  NimBLEServer* srv = NimBLEDevice::createServer();
+  srv->setCallbacks(&link);
+  NimBLEService* svc = srv->createService("03B80E5A-EDE8-4B33-A751-6CE34EC4C700");
+  svc->createCharacteristic("7772E5DB-3868-4112-A1A9-F2669D106BF3",
+                            NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::NOTIFY)
+      ->setCallbacks(&link);
+  svc->start();
+  NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+  adv->addServiceUUID(svc->getUUID());
+  adv->start();
+}
+#else
+static void midiBegin() {}
+#endif
 
 static void startCalibration() {
   overlay = OV_NONE;
@@ -854,7 +1013,14 @@ static void optionsKey(char c) {
     overlay = OV_NONE;
     pickNetwork();
   }
-  if (optCur == 7 && c == '\n') startCalibration();
+  if (optCur == 7 && c == '\n') {  // BLE shares the radio with WiFi: it only starts (or stays off) at boot
+    saveByte("ble", !bleOn);
+    panel("BLE MIDI", bleOn ? "off: restarting..." : "on: restarting...", "");
+    cv.pushSprite(0, 0);
+    delay(400);
+    ESP.restart();
+  }
+  if (optCur == 8 && c == '\n') startCalibration();
   applyVolume();
 }
 
@@ -942,12 +1108,10 @@ static void onKey(char c) {
       break;
     }
     case 'a':
-      drift = !drift;
-      driftHome = curNote();
-      driftAt = millis() + 10000;
-      say(drift ? "AUTO DRIFT: wanders the scale" : "AUTO DRIFT off");
+      if (autoOn) setAuto(false);  // a press stops the autopilot at once
+      else holdKey = c, holdAt = millis();  // tap: drift; hold: autopilot
       break;
-    case 'r': rHeldAt = millis(); break;  // tap or hold decides on release / at R_HOLD_MS
+    case 'r': holdKey = c, holdAt = millis(); break;  // tap: params; hold: mods
     case 'p': {
       remember();
       P.voices = P.voices % 3 + 1;
@@ -990,16 +1154,15 @@ static void serviceKeys() {
   auto& kb = M5Cardputer.Keyboard;
   uint32_t now = millis();
   if (kb.isChange()) {
-    char was = held;
     held = kb.isPressed() ? readKey() : 0;
-    if (was == 'r' && rHeldAt && !held) randomize();  // r let go before the hold fired: new params
-    syn.duck = held == 'q';  // q: fade out while held, swell back on release
+    if (holdAt && !held) holdKey == 'r' ? randomize() : toggleDrift();  // let go before the hold fired
+    syn.duck = held == 'q' || autoSwapAt;  // q: fade out while held, swell back on release
     repeatAt = now + 350;
-    rHeldAt = 0;  // any key change ends an r hold (another key cancels it); a press of r restarts it
+    holdAt = 0;  // any key change ends a hold (another key cancels it); a press of r or a restarts it
     if (held) onKey(held);
-  } else if (held == 'r' && rHeldAt && now - rHeldAt >= R_HOLD_MS) {
-    rHeldAt = 0;
-    randomizeMods();
+  } else if (holdAt && now - holdAt >= HOLD_MS) {
+    holdAt = 0;
+    holdKey == 'r' ? randomizeMods() : setAuto(true);
   } else if (held && strchr(";.,/-=", held) && now >= repeatAt) {  // auto-repeat nav + volume
     repeatAt = now + 45;
     onKey(held);
@@ -1017,6 +1180,7 @@ void setup() {
   if (p.begin("cardrone", true)) {
     theme = p.getUChar("theme", 0) % NTHEME;
     syn.profile = p.getUChar("modp", 2) % NPROFILE;
+    bleOn = p.getUChar("ble", 0);
     p.end();
   }
   applyTheme();
@@ -1043,6 +1207,7 @@ void setup() {
   xTaskCreatePinnedToCore(audioTask, "audio", 4096, nullptr, 5, nullptr, APP_CPU_NUM);  // above spk_task (2)
   if (crash) delay(1500);  // time to read it
 
+  if (bleOn) midiBegin();  // before WiFi starts, so it starts napping (coexistence needs it)
   WiFi.mode(WIFI_STA);
   if (!resume()) pickNetwork();
   Serial.printf("free heap %u, largest block %u\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
@@ -1051,8 +1216,11 @@ void setup() {
 void loop() {
   static uint32_t tSec = 0, tRow = 0, tDraw = 0, lastFrames = 0;
   static int quietSecs = 0;
-  static bool wasCal = false;
+  static bool wasCal = false, wasLinked = false;
   serviceKeys();
+  for (; midiR != midiW; midiR = (midiR + 1) % 64) midiEvent(midiQ[midiR][0], midiQ[midiR][1], midiQ[midiR][2]);
+  if (wasLinked && !bleLinked) syn.midiOwn = 0, say("MIDI gone: the room steers again");
+  wasLinked = bleLinked;
   uint32_t now = millis();
   if (now - tSec >= 1000) {
     tSec = now;
@@ -1087,10 +1255,11 @@ void loop() {
     }
     if (np) {
       int note = pick[esp_random() % np];
-      syn.pt.octave = note / 12 - 1, syn.pt.root = note % 12, upOct = false;
+      goNote(note);
     }
     driftAt = now + (uint32_t)((20000 + esp_random() % 40000) * (1 - 0.6f * clamp01(csi.src[S_MOT])));  // movement hurries it
   }
+  if (autoOn && playing) autopilot(now);
   if (calAt && millis() >= calAt) {  // countdown over: capture the empty room
     calAt = 0;
     csi.calibrate();
