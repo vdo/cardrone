@@ -1,7 +1,7 @@
 // Renders every UI page from mock CSI to PNGs (docs/*.png in the README), using
 // the real drawing code in src/main.cpp against a stub canvas that draws with
 // LovyanGFX's own 6x8 font. Regenerate after UI changes:
-//   c++ -std=c++17 -O2 -Isrc -I.pio/libdeps/cardrone/M5GFX/src/lgfx/Fonts test/screens.cpp -lz -o /tmp/screens && /tmp/screens docs
+//   c++ -std=c++17 -O2 -Isrc -I.pio/libdeps/fresneldrone/M5GFX/src/lgfx/Fonts test/screens.cpp -lz -o /tmp/screens && /tmp/screens docs
 #include <zlib.h>
 #include <algorithm>
 #include <cmath>
@@ -136,7 +136,7 @@ static struct {
 } M5Cardputer;
 static struct { M5Cfg config() { return {}; } struct { int getBatteryLevel() { return 78; } } Power; } M5;
 
-#define CARDRONE_HOST
+#define FRESNELDRONE_HOST
 #include "../src/main.cpp"
 
 // ── mock room: two static reflections plus a person walking through ─────────
@@ -213,6 +213,9 @@ int main(int argc, char** argv) {
     savePng(path);
   };
   page = PG_WATERFALL, shot("waterfall");
+  wfView = 1, shot("radial");
+  wfView = 2, shot("3d");
+  wfView = 0;
   page = PG_BARS, shot("bars");
   page = PG_PARAMS, pCur = P_TIMBRE, shot("params");
   page = PG_MATRIX, mRow = 0, mCol = 2, shot("matrix");

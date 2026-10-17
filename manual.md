@@ -1,13 +1,13 @@
-# CARDRONE manual
+# FRESNELDRONE manual
 
-CARDRONE is a drone synth that listens to the room. WiFi signals bounce off walls, furniture and people on their way to your Cardputer. When someone moves, the bounces change, and CARDRONE turns those changes into slow shifts in the sound: a filter opening as you walk past, shimmer rising when the room gets busy, the drone settling when everyone sits still.
+FRESNELDRONE is a drone synth that listens to the room. WiFi signals bounce off walls, furniture and people on their way to your Cardputer. When someone moves, the bounces change, and FRESNELDRONE turns those changes into slow shifts in the sound: a filter opening as you walk past, shimmer rising when the room gets busy, the drone settling when everyone sits still.
 
 You don't need to play notes. Pick a sound, press play, and let the room do the rest.
 
 ## Quick start
 
-1. Flash `cardrone.bin` (see the README) and power on.
-2. The first time, a **network screen** appears. **Recommended: pick your own WiFi network and JOIN it** (type the password). CARDRONE then keeps the router answering 50 times a second, which gives the steadiest readings and the best motion sensing. No password at hand? Pick **AUTO** at the top: it listens on every channel for a few seconds and locks onto the busiest signal, but how well it senses motion depends on how busy that signal happens to be.
+1. Flash `fresneldrone.bin` (see the README) and power on.
+2. The first time, a **network screen** appears. **Recommended: pick your own WiFi network and JOIN it** (type the password). FRESNELDRONE then keeps the router answering 50 times a second, which gives the steadiest readings and the best motion sensing. No password at hand? Pick **AUTO** at the top: it listens on every channel for a few seconds and locks onto the busiest signal, but how well it senses motion depends on how busy that signal happens to be.
 3. The drone is **silent until you press Space** (the boot screen and the footer remind you). Press Space to play, and again to stop. Or press a note key (see below) to start on that note. The boot screen's top-right corner shows the firmware version.
 4. Walk around, wave your arms, sit still. Watch the waterfall and listen.
 5. Press `i` any time for the key list, and `` ` `` (the key left of `1`) for options.
@@ -18,7 +18,7 @@ Plug in headphones and the speaker switches off by itself.
 
 **Header**, from left to right:
 
-- `CARDRONE`, or a bright `AUTO` tag while the autopilot plays (see Performing)
+- `FRESNELDRONE`, or a bright `AUTO` tag while the autopilot plays (see Performing)
 - the engine name, in its own color, so you can tell at a glance which one is playing; then the root note, octave and scale, e.g. `A2 MINOR`
 - the network mode letter and channel: `A` auto, `J` join, `L` listen, so `A6` means AUTO on channel 6; `LR` in LoRa mode
 - how many WiFi measurements (or LoRa packets) arrive per second, e.g. `48Hz` (amber when nothing is coming in)
@@ -38,6 +38,11 @@ Press **Tab** to cycle through four pages.
 ### 1. Waterfall
 
 A picture of the WiFi signal over time. Each column is one of 52 slices of the WiFi channel, and new readings appear at the top and scroll down. Bright means strong, dark means weak. When the room is still, the waterfall forms steady vertical stripes; when people move, the stripes wobble and smear. In LoRa mode it shows something else: how fast the link is wobbling, from slow tides (left, half a minute per swell) to quick wobble (right, about one a second). A still flat is dark; someone moving about lights up the middle.
+
+Press `o` to change how the waterfall draws its history (the choice is remembered):
+- **XY**: as above, slices left to right, time top to bottom.
+- **RADIAL**: the slices go round the clock from 12, the newest reading is in the middle and the history ripples outward: movement spreads as rings.
+- **3D**: each reading is a ridge, the newest in front and older ones further back, like a mountain range moving toward you.
 
 On the right are live meters for the eight **mod sources** (explained below). The dim bar behind each meter is a fading memory of its recent peak.
 
@@ -74,7 +79,7 @@ Several slots can point at the same param; their amounts add up. A depth of 20�
 
 ## The mod sources: what the room is telling you
 
-Every WiFi packet your Cardputer receives carries a measurement of how the signal arrived: how strong each of the 52 slices was, and how they were shifted in time. CARDRONE boils those measurements down to seven sources, plus one LFO of its own.
+Every WiFi packet your Cardputer receives carries a measurement of how the signal arrived: how strong each of the 52 slices was, and how they were shifted in time. FRESNELDRONE boils those measurements down to seven sources, plus one LFO of its own.
 
 All room sources run from 0 to 1, and they **adapt to your room**. After a few seconds, the calmest the room has been reads near 0 and the busiest near 1, and that scale keeps re-learning slowly. A quiet room drifts toward the low end on its own.
 
@@ -100,11 +105,11 @@ The LoRa link gives one number per packet (how strongly it arrived), not 52 slic
 
 ### Calibrating
 
-Press `e` (or Options → CALIBRATE). A big **LEAVE THE ROOM** countdown gives you 5 seconds to step out. Then the screen shows **CALIBRATING** with a progress bar while CARDRONE records the empty room for about 150 WiFi readings (around 3 seconds at a good rate). When you come back you'll see `BASELINE SET`. Any key cancels, during the countdown or the capture. If it says *waiting for CSI*, no readings are arriving: check the network. From then on, **LO**, **MID** and **HI** measure "how different is the room from empty", which makes them steadier and more meaningful.
+Press `e` (or Options → CALIBRATE). A big **LEAVE THE ROOM** countdown gives you 5 seconds to step out. Then the screen shows **CALIBRATING** with a progress bar while FRESNELDRONE records the empty room for about 150 WiFi readings (around 3 seconds at a good rate). When you come back you'll see `BASELINE SET`. Any key cancels, during the countdown or the capture. If it says *waiting for CSI*, no readings are arriving: check the network. From then on, **LO**, **MID** and **HI** measure "how different is the room from empty", which makes them steadier and more meaningful.
 
 ### Tips for good modulation
 
-- **Connect to a WiFi network (JOIN) for proper motion sensing.** CARDRONE keeps the router busy answering pings, so readings arrive at a steady ~50 a second. AUTO and LISTEN only hear what other devices happen to send: the rate comes and goes, and motion reads patchy.
+- **Connect to a WiFi network (JOIN) for proper motion sensing.** FRESNELDRONE keeps the router busy answering pings, so readings arrive at a steady ~50 a second. AUTO and LISTEN only hear what other devices happen to send: the rate comes and goes, and motion reads patchy.
 - More WiFi readings per second means smoother, more responsive sources. 30–50 Hz is great; under 10 Hz gets sluggish (the header shows the rate).
 - Put the Cardputer somewhere people pass between it and the router: that's where the room is most "visible".
 
@@ -138,7 +143,7 @@ Every engine follows this. ORG shares its 16 partials among the voices, so at 1 
 
 - **Freeze** (`f`): the room stops steering. Every room-driven modulation holds exactly where it is, and ORG's partials stop following the WiFi shape; the LFO keeps moving. The footer's `MOT` turns into an amber `FRZ`. Press `f` again to let the room back in. Handy when the room lands on a sound you love.
 - **Drift** (tap `a`): the drone wanders by itself. Every 20–60 seconds the root glides to another note of the scale within a fifth of where you started; movement in the room makes it wander sooner. A `~` after the scale in the header shows it's on. Playing a note re-centers it.
-- **Autopilot** (hold `a` for 3 seconds; the footer counts down): CARDRONE plays itself, for as long as you let it. The header's title turns into an `AUTO` tag. It drifts the root (as above), eases the params toward new settings every minute or two (slowly, over about half a minute; pitch, noise and level stay yours), re-rolls one modulation slot every half minute or so, and every 3–6 minutes starts a new section: the sound fades out, the scale changes (and often the engine, the voices, the interval, the LFO shape or the key), and it swells back in. The room keeps steering throughout. Press `a` again to take over; `u` goes back to the patch from before the autopilot.
+- **Autopilot** (hold `a` for 3 seconds; the footer counts down): FRESNELDRONE plays itself, for as long as you let it. The header's title turns into an `AUTO` tag. It drifts the root (as above), eases the params toward new settings every minute or two (slowly, over about half a minute; pitch, noise and level stay yours), re-rolls one modulation slot every half minute or so, and every 3–6 minutes starts a new section: the sound fades out, the scale changes (and often the engine, the voices, the interval, the LFO shape or the key), and it swells back in. The room keeps steering throughout. Press `a` again to take over; `u` goes back to the patch from before the autopilot.
 - **Slow fade** (hold `q`): the drone fades out over a few seconds; let go and it swells back.
 - **Undo** (`u`): steps back through the last 8 big changes: randomize (and the held mod roll), preset loads, notes, root and octave, scale, engine, voices, interval and effect switches. Small param nudges aren't recorded.
 
@@ -190,6 +195,7 @@ A note sets the drone's root in the current octave (`9` `0` change the octave). 
 | **Fn** + `1`–`7` | switch an effect on or off from any page: 1 drive, 2 crush, 3 ring, 4 chorus, 5 delay, 6 reverb, 7 shimmer |
 | **Enter** | on Params and Matrix it edits; elsewhere play / stop |
 | **Tab** | next page |
+| `o` | waterfall view: XY → RADIAL → 3D (from another page, back to the waterfall) |
 | `1`–`7` | engine |
 | `p` | voices: 1, 2 or 3 (see below) |
 | `[` `]` | root note down / up a semitone |
@@ -238,7 +244,7 @@ In the list, `;` `.` move, Enter picks, `` ` `` goes back. Networks with `*` nee
 
 ### LoRa mode
 
-You need the M5Stack **Cap LoRa-1262** on the Cardputer and a **Heltec WiFi LoRa 32 V3** (868 MHz version) flashed with CARDRONE's Heltec firmware (see the README).
+You need the M5Stack **Cap LoRa-1262** on the Cardputer and a **Heltec WiFi LoRa 32 V3** (868 MHz version) flashed with FRESNELDRONE's Heltec firmware (see the README).
 
 1. Screw both antennas on. The Heltec must never transmit without its antenna.
 2. Power the Heltec: a USB charger, a power bank or its battery plug. Its small LED blinks slowly while it sends.
@@ -257,7 +263,7 @@ Handy for placing it: walk around with the Heltec and watch the big numbers.
 
 ## Presets
 
-Presets live on the SD card in `/cardrone/preset1.json` to `preset8.json`. A preset holds the engine, root, octave, scale, which effects are on, the LFO shape, all params and the whole matrix. Press `w` (save) or `l` (load), then a number; any other key cancels.
+Presets live on the SD card in `/fresneldrone/preset1.json` to `preset8.json`. A preset holds the engine, root, octave, scale, which effects are on, the LFO shape, all params and the whole matrix. Press `w` (save) or `l` (load), then a number; any other key cancels.
 
 ## Recipes
 
@@ -269,7 +275,7 @@ Presets live on the SD card in `/cardrone/preset1.json` to `preset8.json`. A pre
 ## If something seems off
 
 - **Header shows `0Hz` in amber:** no readings are arriving. Try AUTO again, or JOIN your own network.
-- **`LR 0Hz` in LoRa mode:** the Heltec isn't heard. Is it powered and blinking slowly (a fast blink means its radio didn't start)? Is it running CARDRONE's Heltec firmware, with its antenna on? Moving the two closer is a quick test.
+- **`LR 0Hz` in LoRa mode:** the Heltec isn't heard. Is it powered and blinking slowly (a fast blink means its radio didn't start)? Is it running FRESNELDRONE's Heltec firmware, with its antenna on? Moving the two closer is a quick test.
 - **The Heltec says `WAITING` but the Cardputer shows a rate:** the Cardputer hears it, but its answers don't arrive. Check the cap's antenna. The drone works either way; only the Heltec's screen misses out.
 - **"no LoRa cap found":** the cap isn't seated on the Cardputer, or doesn't answer. Power off, reseat it, try again.
 - **Mods barely move:** calibrate, then move more, or raise the depths. The sources adapt to the room, so constant motion eventually reads as "normal".

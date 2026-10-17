@@ -1,4 +1,4 @@
-# CARDRONE
+# FRESNELDRONE
 
 A drone synth for the M5Stack Cardputer ADV that the room plays. It reads WiFi Channel State Information (CSI): when people move, the multipath changes, and the 52-subcarrier fingerprint drives seven drone engines and an FX chain through an 8-slot mod matrix.
 
@@ -20,8 +20,10 @@ Rendered by the firmware's own drawing code from a simulated room, in which some
 | **Options** (`` ` ``) | **Help** (`i`) |
 | <img src="docs/cal_countdown.png" width="360" alt="Calibration countdown"> | <img src="docs/cal_capture.png" width="360" alt="Calibration capture"> |
 | **Calibrate** (`e`): 5 s to leave the room… | …then the empty room is captured. Any key cancels. |
-| <img src="docs/lora.png" width="360" alt="LoRa mode"> | |
-| **LoRa mode**: the waterfall becomes the link's wobble spectrum (0.03 Hz left, 1.2 Hz right, log-spaced): someone moving about lights it up. TCH and LVL take PHS's and RSI's places. | |
+| <img src="docs/lora.png" width="360" alt="LoRa mode"> | <img src="docs/radial.png" width="360" alt="Radial waterfall"> |
+| **LoRa mode**: the waterfall becomes the link's wobble spectrum (0.03 Hz left, 1.2 Hz right, log-spaced): someone moving about lights it up. TCH and LVL take PHS's and RSI's places. | **RADIAL** waterfall (`o`): newest in the middle, history rippling out. |
+| <img src="docs/3d.png" width="360" alt="3D waterfall"> | |
+| **3D** waterfall (`o` again): newest ridge in front. | |
 
 ## Build / flash
 
@@ -44,7 +46,7 @@ pio run -e heltec -t upload --upload-port /dev/cu.usbserial-0001
 - **Cardputer:** if it doesn't show up, hold G0 while plugging in USB.
 - **Heltec:** screw the 868 MHz antenna on first: transmitting without one can damage the radio. If the upload can't connect, hold PRG, tap RST, let go of PRG. This replaces whatever was on it (Meshtastic, say); [flasher.meshtastic.org](https://flasher.meshtastic.org) puts that back.
 
-Each build also writes a merged image (bootloader, partitions, boot_app0, app): `cardrone.bin` for the Cardputer, `cardrone-heltec.bin` for the Heltec. Prebuilt ones are on the [releases page](https://github.com/vdo/cardrone/releases/latest). To flash an image without PlatformIO, open [ESPConnect](https://thelastoutpostworkshop.github.io/ESPConnect/), connect, go to Flash Firmware, load the `.bin`, set offset `0x0`, and flash.
+Each build also writes a merged image (bootloader, partitions, boot_app0, app): `fresneldrone.bin` for the Cardputer, `fresneldrone-heltec.bin` for the Heltec. Prebuilt ones are on the [releases page](https://github.com/vdo/fresneldrone/releases/latest). To flash an image without PlatformIO, open [ESPConnect](https://thelastoutpostworkshop.github.io/ESPConnect/), connect, go to Flash Firmware, load the `.bin`, set offset `0x0`, and flash.
 
 The boot screen shows the firmware version from `git describe`: `v0.3` on a release, `v0.3-2-gabc1234` between releases (`-dirty` with uncommitted changes).
 
@@ -80,6 +82,7 @@ Nothing sounds until `Space` (play). On the ADV, plugging headphones into the ja
 | `u` | undo: back through randomize, preset loads, notes, engine, voices, interval and effect switches (8 steps) |
 | `Fn` + `1`–`7` | effect on/off from any page: drive, crush, ring, chorus, delay, reverb, shimmer |
 | `Tab` | page: Waterfall → Bars → Params → Matrix |
+| `o` | waterfall view: XY → RADIAL → 3D (remembered) |
 | `1`–`7` | engine: PWM, SAW (supersaw), FM (bell), ORG (subcarrier additive organ), WAVE (wavetable), VOICE (formant choir), NOISE (dust, wind, surf, static, metal) |
 | `p` | voices: 1 (root), 2 (+ interval, a fifth by default), 3 (+ sub) |
 | `r` | tap: randomize params in drone-friendly ranges (pitch, noise and level stay put, shimmer only now and then). Hold 3 s (the footer counts down): randomize only the mod matrix (sources, destinations, depths) and the LFO shape, then the Matrix page opens |
@@ -87,7 +90,7 @@ Nothing sounds until `Space` (play). On the ADV, plugging headphones into the ja
 | `9` `0` | octave down / up |
 | `k` | cycle scale (CSI pitch drift is quantised to it) |
 | `e` | calibrate an empty-room baseline: 5 s countdown to leave the room, then ~3 s capture (any key cancels); LO/MID/HI then measure deviation from it |
-| `w` / `l` then `1`–`8` | save (write) / load preset to `/cardrone/presetN.json` on SD |
+| `w` / `l` then `1`–`8` | save (write) / load preset to `/fresneldrone/presetN.json` on SD |
 | `-` `=` | volume |
 | `` ` `` | options: audio out, volume, mod profile (sharp, normal, smooth, slow), LFO shape (sine, triangle, saw, square, S&H, drift) and rate, theme (green, yellow, red, blue, B&W), network, calibrate |
 | `i` | key help overlay |
@@ -103,7 +106,7 @@ For when there's no WiFi to read, or to sense the whole flat through walls. Need
 The Heltec sends 25 five-byte LoRa beacons a second (SF6, 250 kHz wide: 869.725–869.975 MHz) at +5 dBm. That's inside EU 869.7–870 MHz, which allows 5 mW ERP with no duty-cycle limit; each beacon is ~11 ms on air, ~30% of the time. Its LED blinks slowly while it sends. The Cardputer measures the level of each beacon, draws a straight line between consecutive ones into 50 Hz frames (40 ms behind), and refills the same eight slots, so the matrix and presets carry over. Four times a second it answers in the gap after a beacon (same frequency and power) with how well it hears the Heltec; both ends share the packet layout in `src/link.h`. The Heltec's OLED shows the link:
 
 ```
-CARDRONE 869.85MHz +5dBm
+FRESNELDRONE 869.85MHz
 CARDPUTER HEARS
 -62dBm         25/s        level and rate of the beacons the Cardputer reads (WAITING / LOST until it answers)
 [##########          ]     signal: -110 to -40 dBm
@@ -152,13 +155,13 @@ The LFO shape is saved with presets; the theme is saved on the device.
 ## Check
 
 ```sh
-c++ -std=c++17 -O2 -Isrc test/host_test.cpp -o /tmp/cardrone_test && /tmp/cardrone_test /tmp
+c++ -std=c++17 -O2 -Isrc test/host_test.cpp -o /tmp/fresneldrone_test && /tmp/fresneldrone_test /tmp
 ```
 
 To re-render the screenshots after a UI change:
 
 ```sh
-c++ -std=c++17 -O2 -Isrc -I.pio/libdeps/cardrone/M5GFX/src/lgfx/Fonts test/screens.cpp -lz -o /tmp/screens && /tmp/screens docs
+c++ -std=c++17 -O2 -Isrc -I.pio/libdeps/fresneldrone/M5GFX/src/lgfx/Fonts test/screens.cpp -lz -o /tmp/screens && /tmp/screens docs
 ```
 
 The host test exercises the scale quantiser, preset JSON (including hostile input), CSI motion response, the LoRa link's sources, and renders every engine. With a directory argument it also writes WAVs there.

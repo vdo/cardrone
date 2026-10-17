@@ -1,7 +1,7 @@
-// CARDRONE: a drone synth for the M5Stack Cardputer ADV, played by the room.
+// FRESNELDRONE: a drone synth for the M5Stack Cardputer ADV, played by the room.
 // WiFi Channel State Information (bodies moving bend the multipath) drives
 // seven drone engines and an FX chain through a mod matrix.
-#ifndef CARDRONE_HOST  // test/screens.cpp supplies stand-ins to render the UI on a laptop
+#ifndef FRESNELDRONE_HOST  // test/screens.cpp supplies stand-ins to render the UI on a laptop
 #include <M5Cardputer.h>
 #include <Preferences.h>
 #include <SD.h>
@@ -14,8 +14,8 @@
 #include "utility/PI4IOE5V6408_Class.hpp"
 #endif
 #include <functional>
-#ifndef CARDRONE_VERSION  // merge_bin.py stamps `git describe` here
-#define CARDRONE_VERSION "dev"
+#ifndef FRESNELDRONE_VERSION  // merge_bin.py stamps `git describe` here
+#define FRESNELDRONE_VERSION "dev"
 #endif
 #include "csi.h"
 #include "dsp.h"
@@ -61,12 +61,15 @@ static void applyTheme() {
 enum Page { PG_WATERFALL, PG_BARS, PG_PARAMS, PG_MATRIX, NPAGE };
 enum Overlay { OV_NONE, OV_HELP, OV_OPTIONS };
 constexpr int NOPT = 8;  // options: audio out, volume, mod profile, lfo shape, lfo rate, theme, network, calibrate
-static const char* const HINTS[NPAGE] = {"TAB view  z-m notes  r random  i help", "e calibrate  w/l preset  i help",
+static const char* const HINTS[NPAGE] = {"TAB page  o view  z-m notes  i help", "e calibrate  w/l preset  i help",
                                          ";. select  ,/ adjust  ENTER fx on/off", ";. row  ENTER column  ,/ adj  DEL off"};
 // M5Unified doubles a mono stream, then scales by 32*vol^2*255^2/2^36: 180 is
 // unity gain, so a full-scale drone hard-clips in its mixer above that.
 constexpr int VOL_MAX = 180;
 static int page = PG_WATERFALL, overlay = OV_NONE, pCur = 0, mRow = 0, mCol = 0, optCur = 0, vol = 180;
+static const char* const WF_VIEW[] = {"XY", "RADIAL", "3D"};  // how the waterfall draws its history: o cycles
+constexpr int NWFVIEW = sizeof WF_VIEW / sizeof *WF_VIEW;
+static uint8_t wfView = 0;  // saved in NVS
 static bool audioOn = true;  // ADV hardware: a plugged-in jack switches the speaker amp off by itself
 static volatile bool playing = false;  // silent until ENTER
 static char pending = 0;     // 's' or 'l' waiting for a slot digit
@@ -172,7 +175,7 @@ static void onCsi(void*, wifi_csi_info_t* info) {  // WiFi task, core 0
 // on the Cardputer measures how strongly each arrives (Csi::level()) and answers a few
 // times a second with a Status for the Heltec's screen (src/link.h).
 static volatile uint32_t loraPkts = 0;
-#ifndef CARDRONE_HOST
+#ifndef FRESNELDRONE_HOST
 static Module* loraMod = new Module(5, 4, 3, 6, SPI);  // cap: NSS G5, IRQ G4, RST G3, BUSY G6; SPI shared with the SD card
 static SX1262 lora = loraMod;
 static bool loraUp = false;
@@ -338,7 +341,7 @@ static void csiRun(uint8_t mode, const uint8_t* mac, int ch, const char* name) {
 
 static bool loraStart() {  // false: no cap, or its radio didn't answer
   radioOff();
-#ifndef CARDRONE_HOST
+#ifndef FRESNELDRONE_HOST
   if (!loraInit()) return false;
   csi = Csi();
   lora.startReceive();
@@ -384,7 +387,7 @@ static void bootAnimation(const char* crash) {
       }
       cv.setTextSize(3);
       cv.setTextColor(ramp[constrain((int)t - 450, 0, 416) / 16]);  // fades up the phosphor ramp
-      cv.drawCenterString("CARDRONE", W / 2, 38);
+      cv.drawCenterString("FRESNELDRONE", W / 2, 38);
       cv.setTextSize(1);
       int n = constrain((int)t - 900, 0, len * 30) / 30;
       char typed[48];
@@ -398,7 +401,7 @@ static void bootAnimation(const char* crash) {
         cv.drawCenterString("press SPACE to play", W / 2, 88);
       }
       cv.setTextColor(C_DIM);
-      cv.drawRightString(CARDRONE_VERSION, W - 3, 3);
+      cv.drawRightString(FRESNELDRONE_VERSION, W - 3, 3);
       if (crash && t > 1000) {
         cv.setTextColor(C_WARN);
         cv.drawCenterString(crash, W / 2, 20);
@@ -436,23 +439,24 @@ static void drawHeader() {
   const Patch& P = syn.pt;
   cv.fillRect(0, 0, W, 12, C_BAR);
   cv.drawFastHLine(0, 12, W, C_MID);
+  const int ex = 7 + cv.textWidth("FRESNELDRONE");  // the engine tag, after the title's slot
   if (autoOn) {  // autopilot: the title becomes a pill
     cv.fillRoundRect(1, 1, 30, 10, 2, C_HI);
     cv.setTextColor(C_BG);
     cv.drawString("AUTO", 4, 2);
   } else {
     cv.setTextColor(C_HI);
-    cv.drawString("CARDRONE", 3, 2);
+    cv.drawString("FRESNELDRONE", 3, 2);
   }
   const char* en = ENGINE_NAME[P.engine];
   int ew = cv.textWidth(en) + 6;
-  cv.fillRoundRect(55, 1, ew, 10, 2, ENGINE_COLOR[P.engine]);
+  cv.fillRoundRect(ex, 1, ew, 10, 2, ENGINE_COLOR[P.engine]);
   cv.setTextColor(C_BG);
-  cv.drawString(en, 58, 2);
+  cv.drawString(en, ex + 3, 2);
   char s[24];
   snprintf(s, sizeof s, "%s%d %s%s", NOTE_NAME[P.root], P.octave, SCALES[P.scale].name, drift ? "~" : "");
   cv.setTextColor(C_HI);
-  cv.drawString(s, 60 + ew, 2);
+  cv.drawString(s, ex + 5 + ew, 2);
   const char tag = "-JLA"[netMode];  // network mode, then channel
   if (csi.calLeft > 0) snprintf(s, sizeof s, "CAL %d%%", 100 - csi.calLeft * 100 / kCalFrames);
   else if (netMode == NET_OFF) snprintf(s, sizeof s, "NO NET");
@@ -460,6 +464,7 @@ static void drawHeader() {
   else if (csiHz) snprintf(s, sizeof s, "%c%d %luHz", tag, netCh, (unsigned long)csiHz);
   else snprintf(s, sizeof s, "%c%d 0Hz", tag, netCh);
   cv.setTextColor(csi.calLeft > 0 || !csiHz ? C_WARN : C_MID);
+  cv.fillRect(W - 24 - cv.textWidth(s), 0, cv.textWidth(s) + 4, 12, C_BAR);  // over the end of a long scale name
   cv.drawRightString(s, W - 20, 2);
   uint16_t bc = batt >= 0 && batt < 20 ? C_WARN : C_MID;  // battery: outline, nub, fill
   cv.drawRect(W - 17, 3, 12, 7, bc);
@@ -467,12 +472,38 @@ static void drawHeader() {
   if (batt > 0) cv.fillRect(W - 15, 5, max(1, batt * 8 / 100), 3, bc);
 }
 
-static void drawWaterfall() {  // subcarrier ->, time v
-  for (int r = 0; r < WF_ROWS; r++) {
-    const uint8_t* row = wf[(wfHead + r) % WF_ROWS];
-    for (int k = 0; k < NSC; k++) cv.fillRect(4 + k * 3, 15 + r * 2, 3, 2, ramp[row[k]]);
+static void drawWaterfall() {
+  const int bw = NSC * 3 + 2, bh = WF_ROWS * 2 + 2, cx = 3 + bw / 2, cy = 14 + bh / 2;  // the frame
+  auto hist = [](int r) { return wf[(wfHead + r) % WF_ROWS]; };  // r = 0: newest
+  if (wfView == 0) {  // XY: subcarrier ->, time v
+    for (int r = 0; r < WF_ROWS; r++)
+      for (int k = 0; k < NSC; k++) cv.fillRect(4 + k * 3, 15 + r * 2, 3, 2, ramp[hist(r)[k]]);
+  } else if (wfView == 1) {  // RADIAL: subcarriers clockwise from 12, newest in the middle, rippling out
+    const int R = bh / 2 - 2, r0 = 4;
+    for (int y = -R; y < R; y += 2)  // 2x2 blocks: half the radial rows, a quarter of the atan2s
+      for (int x = -R; x < R; x += 2) {
+        float d = sqrtf((x + 1) * (x + 1) + (y + 1) * (y + 1));
+        if (d < r0 || d >= R) continue;
+        int k = (int)((atan2f(x + 1, -(y + 1)) / 6.2832f + 1) * NSC) % NSC;
+        cv.fillRect(cx + x, cy + y, 2, 2, ramp[hist((int)((d - r0) / (R - r0) * WF_ROWS))[k]]);
+      }
+  } else {  // 3D: every other row as a ridge, newest in front, older ones further back and smaller
+    for (int r = WF_ROWS - 2; r >= 0; r -= 2) {  // back to front: each ridge hides what's behind it
+      const uint8_t* row = hist(r);
+      float z = (float)r / WF_ROWS, s = 1 - 0.45f * z;  // depth 0..1, perspective
+      int yb = 14 + bh - 6 - (int)(z * 64), half = (int)(s * (bw - 10) / 2), hh = (int)(s * 30), prev = -1;
+      for (int x = -half; x <= half; x++) {
+        float f = (x + half) * (NSC - 1.f) / (2 * half);
+        int k = min((int)f, NSC - 2);
+        float v = row[k] + (row[k + 1] - row[k]) * (f - k);  // 0..31
+        int y = yb - (int)(v / 31 * hh), top = prev < 0 ? y : min(y, prev), bot = prev < 0 ? y : max(y, prev);
+        cv.drawFastVLine(cx + x, y, yb - y + 1, C_BG);  // the ridge's body
+        cv.drawFastVLine(cx + x, top, bot - top + 1, ramp[(int)(v * (1 - 0.6f * z))]);  // its line, dimmer further back
+        prev = y;
+      }
+    }
   }
-  cv.drawRect(3, 14, NSC * 3 + 2, WF_ROWS * 2 + 2, C_DIM);
+  cv.drawRect(3, 14, bw, bh, C_DIM);
   if (!csi.frames) {
     cv.setTextColor(C_WARN);
     cv.drawCenterString(netMode == NET_LORA ? "NO LINK - is the Heltec on?" : "NO CSI - ` for network", 82, 58);
@@ -557,15 +588,15 @@ static void drawMatrix() {
 }
 
 static void drawHelp() {
-  static const char* const K[][2] = {  // three columns of nine: keys <= 3 chars, notes <= 9
+  static const char* const K[][2] = {  // three columns of ten: keys <= 3 chars, notes <= 9
       {"SPC", "play/stop"}, {"z-m", "notes"},     {"s-j", "sharps"},    {"SH", "note +8va"}, {"1-7", "engine"},
       {"p", "voices"},      {"t", "interval"},    {"9 0", "octave"},    {"[ ]", "root -/+"}, {"k", "scale"},
       {"a", "drift"},       {"a", "hold:auto"},   {"f", "freeze"},      {"q", "hold:fade"},  {"u", "undo"},
-      {"r", "rnd/hold"},    {"e", "calibrate"},   {"TAB", "page"},      {";.", "up/down"},   {",/", "adjust"},
+      {"r", "rnd/hold"},    {"e", "calibrate"},   {"TAB", "page"},      {"o", "view"},        {";.", "up/down"},   {",/", "adjust"},
       {"ENT", "edit/play"}, {"DEL", "clr slot"},  {"Fn", "+1-7: fx"},   {"w l", "save/load"}, {"- =", "volume"},
       {"`", "options"},     {"i", "help"}};
   for (int i = 0; i < (int)(sizeof K / sizeof *K); i++) {
-    int x = 1 + (i / 9) * 80, y = 15 + (i % 9) * 11;
+    int x = 1 + (i / 10) * 80, y = 15 + (i % 10) * 10;
     cv.setTextColor(C_HI);
     cv.drawString(K[i][0], x, y);
     cv.setTextColor(C_MID);
@@ -785,7 +816,7 @@ static void autoSurvey() {
 
 static void saveNet(uint8_t mode, const char* ssid, const char* pass, const uint8_t* bssid, int ch) {
   Preferences p;
-  p.begin("cardrone", false);
+  p.begin("fresneldrone", false);
   p.putUChar("mode", mode);
   if (mode == NET_JOIN) {
     p.putString("ssid", ssid);
@@ -802,7 +833,7 @@ static void saveNet(uint8_t mode, const char* ssid, const char* pass, const uint
 static void loadCreds(char* ssid, char* pass) {  // 64-byte buffers
   Preferences p;
   ssid[0] = pass[0] = 0;
-  if (!p.begin("cardrone", true)) return;
+  if (!p.begin("fresneldrone", true)) return;
   p.getString("ssid", ssid, 64);
   p.getString("pass", pass, 64);
   p.end();
@@ -813,7 +844,7 @@ static bool resume() {  // restart the last network mode saved in NVS
   uint8_t bssid[6] = {}, mode = NET_OFF, ch = 0;
   loadCreds(ssid, pass);
   Preferences p;
-  if (p.begin("cardrone", true)) {
+  if (p.begin("fresneldrone", true)) {
     mode = p.getUChar("mode", *ssid ? NET_JOIN : NET_OFF);  // older builds saved creds only
     ch = p.getUChar("ch", 0);
     p.getString("lssid", lssid, sizeof lssid);
@@ -913,14 +944,14 @@ static bool sdMount() {  // lazy: the mount costs ~27 KB of DRAM
   if (!ok) {
     SPI.begin(40, 39, 14, 12);
     ok = SD.begin(12, SPI, 25000000);
-    if (ok) SD.mkdir("/cardrone");
+    if (ok) SD.mkdir("/fresneldrone");
   }
   return ok;
 }
 
 static bool savePreset(int slot) {
   char path[32], js[1024];
-  snprintf(path, sizeof path, "/cardrone/preset%d.json", slot);
+  snprintf(path, sizeof path, "/fresneldrone/preset%d.json", slot);
   int n = patchToJson(syn.pt, js, sizeof js);
   if (!sdMount()) return false;
   File f = SD.open(path, FILE_WRITE);
@@ -932,7 +963,7 @@ static bool savePreset(int slot) {
 
 static bool loadPreset(int slot) {
   char path[32], js[1024];
-  snprintf(path, sizeof path, "/cardrone/preset%d.json", slot);
+  snprintf(path, sizeof path, "/fresneldrone/preset%d.json", slot);
   if (!sdMount()) return false;
   File f = SD.open(path);
   if (!f) return false;
@@ -964,7 +995,7 @@ static void adjust(int up, int adj) {
 
 static void saveByte(const char* key, uint8_t v) {  // device settings in NVS
   Preferences p;
-  p.begin("cardrone", false);
+  p.begin("fresneldrone", false);
   p.putUChar(key, v);
   p.end();
 }
@@ -1144,6 +1175,11 @@ static void onKey(char c) {
       break;
     case '\b': if (page == PG_MATRIX) P.mod[mRow].depth = 0; break;
     case 'i': overlay = OV_HELP; break;
+    case 'o':  // from another page: back to the waterfall as it was; on it: the next view
+      if (page == PG_WATERFALL) wfView = (wfView + 1) % NWFVIEW, saveByte("wfv", wfView);
+      page = PG_WATERFALL;
+      say(WF_VIEW[wfView]);
+      break;
     case '`': overlay = OV_OPTIONS; break;
     case '1': case '2': case '3': case '4': case '5': case '6': case '7':
       remember();
@@ -1252,9 +1288,10 @@ void setup() {
   cv.setColorDepth(16);
   cv.createSprite(W, H);
   Preferences p;
-  if (p.begin("cardrone", true)) {
+  if (p.begin("fresneldrone", true)) {
     theme = p.getUChar("theme", 0) % NTHEME;
     syn.profile = p.getUChar("modp", 2) % NPROFILE;
+    wfView = p.getUChar("wfv", 0) % NWFVIEW;
     p.end();
   }
   applyTheme();

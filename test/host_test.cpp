@@ -1,5 +1,5 @@
 // Host-side check for the pure DSP/CSI code. Optional arg: dir to write engine WAVs.
-//   c++ -std=c++17 -O2 -Isrc test/host_test.cpp -o /tmp/cardrone_test && /tmp/cardrone_test /tmp
+//   c++ -std=c++17 -O2 -Isrc test/host_test.cpp -o /tmp/fresneldrone_test && /tmp/fresneldrone_test /tmp
 #include <cassert>
 #include <cstdio>
 #include <initializer_list>
@@ -289,7 +289,7 @@ int main(int argc, char** argv) {
     assert(rms > 0.05f && rms < 0.7f);
     if (argc > 1) {
       char path[256];
-      snprintf(path, sizeof path, "%s/cardrone_%s.wav", argv[1], ENGINE_NAME[e]);
+      snprintf(path, sizeof path, "%s/fresneldrone_%s.wav", argv[1], ENGINE_NAME[e]);
       writeWav(path, pcm, n);
     }
   }

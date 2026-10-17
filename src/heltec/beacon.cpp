@@ -1,4 +1,4 @@
-// CARDRONE beacon for the Heltec WiFi LoRa 32 V3: the far end of LoRa mode.
+// FRESNELDRONE beacon for the Heltec WiFi LoRa 32 V3: the far end of LoRa mode.
 // Sends a LoRa Beacon 25 times a second on 869.85 MHz (src/link.h); the Cardputer measures
 // how strongly each one arrives, and bodies moving through the flat change that.
 // Each beacon also carries a touch reading: touch GPIO2-7 (bare header pins work; a
@@ -64,7 +64,7 @@ static void screenTask(void*) {
 
     oled.drawBox(0, 0, 128, 9);
     oled.setDrawColor(0);
-    snprintf(s, sizeof s, "CARDRONE %.2fMHz +%ddBm", LORA_FREQ, LORA_POWER);
+    snprintf(s, sizeof s, "FRESNELDRONE %.2fMHz", LORA_FREQ);  // 5x7 font: 25 characters fit
     oled.drawStr(2, 1, s);
     oled.setDrawColor(1);
 
