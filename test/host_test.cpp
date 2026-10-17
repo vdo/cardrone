@@ -67,6 +67,12 @@ int main(int argc, char** argv) {
   assert(patchFromJson("{\"engine\":1,\"root\":0,\"octave\":2,\"scale\":0,\"fx\":0,\"params\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"
                        "\"matrix\":[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]}", q) && q.voices == 3);  // pre-voices preset
   assert(!patchFromJson("{\"engine\":1}", q));
+  assert(patchFromJson("{\"v\":2,\"engine\":6,\"root\":0,\"octave\":2,\"scale\":0,\"fx\":0,\"params\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"
+                       "\"matrix\":[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]}", q) &&
+         q.engine == E_NOISE);  // NOISE was 6 before FOLD took that place
+  p.engine = E_FOLD;
+  patchToJson(p, js, sizeof js);
+  assert(patchFromJson(js, q) && q.engine == E_FOLD);
   const char* evil =
       "{\"engine\":99,\"root\":-5,\"octave\":7,\"scale\":-nan,\"fx\":999,\"params\":[9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,-x9],"
       "\"matrix\":[[99,99,500],[0,0,-500],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1]]}";
@@ -224,6 +230,35 @@ int main(int argc, char** argv) {
     double h2 = 20 * log10(mag(220) / mag(110));
     printf("drive 0.8: 2nd harmonic %.1f dB\n", h2);
     assert(h2 > -30);
+  }
+
+  // FOLD: a sine at SPREAD 0; SPREAD folds in odd harmonics, TIMBRE skews the folds into even ones.
+  {
+    for (float u = -9; u < 9; u += 0.37f)  // ADAA needs foldF to be foldT's antiderivative
+      assert(fabsf((foldF(u + 0.01f) - foldF(u - 0.01f)) / 0.02f - foldT(u)) < 0.02f);
+    float src0[NSRC] = {}, flat[NSC];
+    for (float& f : flat) f = 0.5f;
+    auto tone = [&](float spread, float timbre, double& odd, double& even) {  // harmonics 2-16 vs the fundamental, dB
+      syn.pt = DEFAULT_PATCH;
+      syn.pt.engine = E_FOLD, syn.pt.voices = 1, syn.pt.fx = 0;
+      syn.pt.p[P_SPREAD] = spread, syn.pt.p[P_TIMBRE] = timbre, syn.pt.p[P_CUTOFF] = 1, syn.pt.p[P_NOISE] = 0;
+      for (auto& s : syn.pt.mod) s.depth = 0;
+      for (int i = 0; i + 512 <= SR * 4; i += 512) syn.render(pcm + i, 512, src0, flat);
+      auto mag = [&](double hz) {
+        double re = 0, im = 0;
+        for (int i = 0; i < SR; i++) re += pcm[SR * 3 + i] * cos(2 * M_PI * hz * i / SR), im += pcm[SR * 3 + i] * sin(2 * M_PI * hz * i / SR);
+        return re * re + im * im;
+      };
+      double e[2] = {1e-12, 1e-12}, f = mag(syn.freq);
+      for (int h = 2; h <= 16; h++) e[h % 2] += mag(syn.freq * h);
+      even = 10 * log10(e[0] / f), odd = 10 * log10(e[1] / f);
+    };
+    double o0, e0, o1, e1, o2, e2;
+    tone(0, 0, o0, e0), tone(1, 0, o1, e1), tone(1, 1, o2, e2);
+    printf("fold: clean odd %.0f even %.0f dB  folded odd %.0f even %.0f  skewed odd %.0f even %.0f\n", o0, e0, o1, e1, o2, e2);
+    assert(o0 < -40 && e0 < -40);  // a sine
+    assert(o1 > -10 && e1 < -30);  // folded: odd harmonics (even ones measure ~-38 dB)
+    assert(e2 > -20);              // skewed: even ones too
   }
 
   // REVERB and SHIMMER maxed on a held drone: the shimmer loop must bloom, not run away and pin.

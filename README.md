@@ -1,6 +1,6 @@
 # FRESNELDRONE
 
-A drone synth for the M5Stack Cardputer ADV that the room plays. It reads WiFi Channel State Information (CSI): when people move, the multipath changes, and the 52-subcarrier fingerprint drives seven drone engines and an FX chain through an 8-slot mod matrix.
+A drone synth for the M5Stack Cardputer ADV that the room plays. It reads WiFi Channel State Information (CSI): when people move, the multipath changes, and the 52-subcarrier fingerprint drives eight drone engines and an FX chain through an 8-slot mod matrix.
 
 Without WiFi, or to cover a whole flat through walls, **LoRa mode** reads a LoRa link instead: a Heltec board sends beacons, the Cap LoRa-1262 on the Cardputer measures how people moving change them (see [LoRa mode](#lora-mode)).
 
@@ -83,7 +83,7 @@ Nothing sounds until `Space` (play). On the ADV, plugging headphones into the ja
 | `Fn` + `1`–`7` | effect on/off from any page: drive, crush, ring, chorus, delay, reverb, shimmer |
 | `Tab` | page: Waterfall → Bars → Params → Matrix |
 | `o` | waterfall view: XY → RADIAL → 3D (remembered) |
-| `1`–`7` | engine: PWM, SAW (supersaw), FM (bell), ORG (subcarrier additive organ), WAVE (wavetable), VOICE (formant choir), NOISE (dust, wind, surf, static, metal) |
+| `1`–`8` | engine: PWM, SAW (supersaw), FM (bell), ORG (subcarrier additive organ), WAVE (wavetable), VOICE (formant choir), FOLD (wavefolder: SPREAD folds, TIMBRE skews), NOISE (dust, wind, surf, static, metal) |
 | `p` | voices: 1 (root), 2 (+ interval, a fifth by default), 3 (+ sub) |
 | `r` | tap: randomize params in drone-friendly ranges (pitch, noise and level stay put, shimmer only now and then). Hold 3 s (the footer counts down): randomize only the mod matrix (sources, destinations, depths) and the LFO shape, then the Matrix page opens |
 | `[` `]` | root note down / up a semitone |
@@ -92,6 +92,8 @@ Nothing sounds until `Space` (play). On the ADV, plugging headphones into the ja
 | `e` | calibrate an empty-room baseline: 5 s countdown to leave the room, then ~3 s capture (any key cancels); LO/MID/HI then measure deviation from it |
 | `w` / `l` then `1`–`8` | save (write) / load preset to `/fresneldrone/presetN.json` on SD |
 | `-` `=` | volume |
+| `_` `+` | room amount, 0–200%: scales every room-driven slot (not the LFO); the footer shows `ROOM %` while it isn't 100% |
+| `\` | blackout: backlight off, the drone plays on; any key wakes it |
 | `` ` `` | options: audio out, volume, mod profile (sharp, normal, smooth, slow), LFO shape (sine, triangle, saw, square, S&H, drift) and rate, theme (green, yellow, red, blue, B&W), network, calibrate |
 | `i` | key help overlay |
 | `;` `.` | up / down (Params, Matrix) |

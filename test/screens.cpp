@@ -137,7 +137,7 @@ struct M5Canvas {
 struct M5Cfg { int serial_baudrate; };
 struct KeysState { bool tab, enter, del, fn; std::vector<char> word; };
 static struct {
-  struct { void setRotation(int) {} } Display;
+  struct { void setRotation(int) {} uint8_t getBrightness() { return 128; } void setBrightness(uint8_t) {} } Display;
   struct Spk {
     struct Cfg { int sample_rate, dma_buf_count, dma_buf_len, task_pinned_core; };
     Cfg config() { return {}; }

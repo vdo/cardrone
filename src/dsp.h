@@ -27,8 +27,8 @@ static const ModProfile MOD_PROFILES[] = {{"SHARP", 0.15f, 0.15f}, {"NORMAL", 0.
 constexpr int NPROFILE = sizeof MOD_PROFILES / sizeof *MOD_PROFILES;
 constexpr float PARAM_TAU = 0.15f, FADE_TAU = 1.2f;  // FADE: held q's fade out / swell back
 
-enum Engine { E_PWM, E_SAW, E_FM, E_ORGAN, E_WAVE, E_VOICE, E_NOISE, NENGINE };
-static const char* const ENGINE_NAME[NENGINE] = {"PWM", "SAW", "FM", "ORG", "WAVE", "VOICE", "NOISE"};
+enum Engine { E_PWM, E_SAW, E_FM, E_ORGAN, E_WAVE, E_VOICE, E_FOLD, E_NOISE, NENGINE };
+static const char* const ENGINE_NAME[NENGINE] = {"PWM", "SAW", "FM", "ORG", "WAVE", "VOICE", "FOLD", "NOISE"};
 enum NoiseKind { N_DUST, N_WIND, N_SURF, N_STATIC, N_METAL, NNOISE };  // TIMBRE morphs through these
 enum Lfo { L_SINE, L_TRI, L_SAW, L_SQR, L_SH, L_DRIFT, NLFO };
 static const char* const LFO_NAME[NLFO] = {"SINE", "TRIANGLE", "SAW DOWN", "SQUARE", "S&H", "DRIFT"};
@@ -86,7 +86,7 @@ static inline int quantize(float s, uint16_t mask) {
 
 // ── patch JSON (hand-rolled: the format is ours and flat) ────────────────────
 static int patchToJson(const Patch& p, char* out, int cap) {  // cap >= 512
-  int n = snprintf(out, cap, "{\"v\":2,\"engine\":%d,\"root\":%d,\"octave\":%d,\"scale\":%d,\"fx\":%d,\"lfo\":%d,\"voices\":%d,\"interval\":%d,\n\"params\":[",
+  int n = snprintf(out, cap, "{\"v\":3,\"engine\":%d,\"root\":%d,\"octave\":%d,\"scale\":%d,\"fx\":%d,\"lfo\":%d,\"voices\":%d,\"interval\":%d,\n\"params\":[",
                    p.engine, p.root, p.octave, p.scale, p.fx, p.lfo, p.voices, p.interval);
   for (int i = 0; i < NPARAM; i++) n += snprintf(out + n, cap - n, "%s%.3f", i ? "," : "", p.p[i]);
   n += snprintf(out + n, cap - n, "],\n\"matrix\":[");
@@ -125,10 +125,11 @@ static bool patchFromJson(const char* js, Patch& out) {
   jsonNums(js, "\"lfo\"", &lfo, 1);  // optional: older presets lack these two
   jsonNums(js, "\"voices\"", &voices, 1);
   jsonNums(js, "\"interval\"", &interval, 1);
-  float ver = 1;  // format 2 gave shimmer its own FX bit; before, it came with the reverb
+  float ver = 1;  // format 2 gave shimmer its own FX bit (before, it came with the reverb); 3 put FOLD before NOISE
   jsonNums(js, "\"v\"", &ver, 1);
   Patch p;
   p.engine = clampInt(h[0], 0, NENGINE - 1);
+  if (ver < 3 && p.engine == E_FOLD) p.engine = E_NOISE;
   p.root = clampInt(h[1], 0, 11);
   p.octave = clampInt(h[2], 0, 5);
   p.scale = clampInt(h[3], 0, NSCALE - 1);
@@ -158,6 +159,13 @@ static DSP_AI float sinT(float ph) {  // ph in cycles, any range
   return SINT[i] + (SINT[i + 1] - SINT[i]) * fr;
 }
 static DSP_AI float clampf(float x, float lo, float hi) { return x < lo ? lo : x > hi ? hi : x; }
+// Triangle wavefolder: -1..1 passes, beyond that it reflects back (period 4); foldF is its
+// antiderivative, for first-order antialiasing (ADAA). |u| < 250 (the +64 keeps the cast a floor).
+static DSP_AI float foldT(float u) { float w = (u + 1) * 0.25f + 64, t = (w - (int)w) * 4; return t < 2 ? t - 1 : 3 - t; }
+static DSP_AI float foldF(float u) {
+  float w = (u + 1) * 0.25f + 64, t = (w - (int)w) * 4;
+  return t < 2 ? t * t * 0.5f - t : t * (3 - t * 0.5f) - 4;
+}
 static DSP_AI float sat(float x) {  // cubic soft clip, |out| <= 1
   x = clampf(x, -1.5f, 1.5f);
   return x - x * x * x * (4.f / 27);
@@ -196,6 +204,7 @@ struct Synth {
   uint8_t profile = 2;  // MOD_PROFILES index, SMOOTH
   bool freeze = false;  // hold the room's mods (and ORG's partials) where they are; the LFO keeps going
   bool duck = false;    // fade the output down (slowly); false swells it back
+  float room = 1;       // room amount, 0..2: scales the room's sources in the matrix (not the LFO)
 
   Synth() {
     for (int i = 0; i <= 1024; i++) SINT[i] = sinf(2 * PI_F * i / 1024);
@@ -234,6 +243,7 @@ struct Synth {
   float surfPh = 0, surfRate = 0.1f, sz1 = 0, sz2 = 0, shV = 0, gate = 0.5f, gateT = 0.5f, metPh[3] = {};
   int shCnt = 0, shHold = 1;
   uint16_t lfsr[3] = {1, 1, 1};
+  float foldU[3] = {}, foldDc = 0;  // FOLD: each voice's last folder input, DC blocker
   float drvLp = 0, drvDc = 0;  // analog drive: circuit bandwidth, DC blocker
   Slot route[NSLOT];    // the routings as currently applied: glide toward pt.mod
   float routeD[NSLOT];  // their depths, gliding
@@ -322,7 +332,7 @@ DSP_IRAM void Synth::block(int16_t* out, int n, float* src, const float* prof) {
     bool moved = s.src != r.src || s.dst != r.dst;
     routeD[k] += ((moved ? 0 : s.depth) - routeD[k]) * pg;
     if (moved && fabsf(routeD[k]) < 0.5f) r.src = s.src, r.dst = s.dst;
-    if (r.src < NSRC && r.dst < NPARAM) eff[r.dst] += modS[r.src] * routeD[k] * 0.01f;
+    if (r.src < NSRC && r.dst < NPARAM) eff[r.dst] += modS[r.src] * routeD[k] * (r.src == S_LFO ? 0.01f : 0.01f * room);
   }
   for (float& e : eff) e = clamp01(e);
 
@@ -362,7 +372,7 @@ DSP_IRAM void Synth::block(int16_t* out, int n, float* src, const float* prof) {
   float tb = eff[P_TIMBRE], sp = eff[P_SPREAD];
 
   float inc[16], idt[16], amp[16], pw[6], idx[3], minc[3], fa1[3], fa2[3], fa3[3], fk[3];
-  float norm = 1, wfr = 0, nzF = 0, dustP = 0, surfA = 0, surfG = 0;
+  float norm = 1, wfr = 0, nzF = 0, dustP = 0, surfA = 0, surfG = 0, foldG = 1, foldO = 0;
   int nzA = 0, shMax = 2;
   const int16_t *wA = WT[0], *wB = WT[1];
   // Voices stack root, fifth (fv[1]) and sub (fv[2]); fewer voices get a lift so
@@ -433,6 +443,11 @@ DSP_IRAM void Synth::block(int16_t* out, int n, float* src, const float* prof) {
       }
       break;
     }
+    case E_FOLD:  // sines into a wavefolder: SPREAD folds them (harmonics bloom), TIMBRE skews the folds
+      for (int v = 0; v < 3; v++) inc[v] = fv[v] / SR;
+      foldG = 0.9f + sp * 6;  // below 1: a clean sine
+      foldO = tb * 1.2f;      // offset into the folder: uneven folds, even harmonics
+      break;
     case E_NOISE: {  // five kinds of noise, unpitched but for METAL: TIMBRE morphs between neighbours
       float pos = tb * (NNOISE - 1) * 0.9999f;
       nzA = (int)pos, nzF = pos - nzA;
@@ -560,6 +575,17 @@ DSP_IRAM void Synth::block(int16_t* out, int n, float* src, const float* prof) {
         }
         break;
       }
+      case E_FOLD:
+        for (int v = 0; v < tones; v++) {  // root, interval, sub
+          ph[v] = wrap1(ph[v] + inc[v]);
+          float u = foldG * sinT(ph[v]) + foldO, du = u - foldU[v];
+          // ADAA: the folder averaged over the step, not sampled; its corners alias far less
+          x += (v == 1 ? 0.3f : 0.45f) * (fabsf(du) > 1e-3f ? (foldF(u) - foldF(foldU[v])) / du : foldT(u - du * 0.5f));
+          foldU[v] = u;
+        }
+        foldDc += (x - foldDc) * 0.0015f;  // the offset leaves DC behind: block it (~10 Hz)
+        x = (x - foldDc) * 0.75f * vg;
+        break;
       case E_NOISE: {
         float y[2] = {0, 0};
         for (int s = 0; s < (nzF > 0.001f ? 2 : 1); s++) {

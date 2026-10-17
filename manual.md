@@ -28,6 +28,7 @@ Plug in headphones and the speaker switches off by itself.
 
 - a small `MOT` graph of recent motion
 - `DSP %`: how hard the synth is working (keep it under ~80%)
+- `ROOM %` in its place while the room amount (`_` `+`) isn't 100%
 - the volume, or `MUTED`, or `STOPPED`
 - hints for the current page, and short messages such as `RANDOMIZED` or `BASELINE SET`
 
@@ -115,7 +116,7 @@ Press `e` (or Options → CALIBRATE). A big **LEAVE THE ROOM** countdown gives y
 
 ## Sound engines
 
-Press `1`–`7`. The sound fades over when you switch.
+Press `1`–`8`. The sound fades over when you switch.
 
 | Key | Engine | Sound | TIMBRE | SPREAD |
 |---|---|---|---|---|
@@ -125,7 +126,8 @@ Press `1`–`7`. The sound fades over when you switch.
 | `4` | **ORG** | An organ of 16 partials whose loudness follows the live shape of the WiFi signal. The room literally shapes the tone. | how strongly the signal shapes the partials | stretches the partials apart (more bell-like) |
 | `5` | **WAVE** | Wavetable. | scans 8 waves: sine → warm → triangle → saw → square → "ah" → nasal → glass | detune |
 | `6` | **VOICE** | A choir: four voices through vocal formants. | the vowel: a → e → i → o → u | choir detune |
-| `7` | **NOISE** | Five kinds of noise, not just colors: **dust** (vinyl crackle, embers), **wind** (broad gusts wandering on their own), **surf** (waves building and breaking every 6–12 s), **static** (choppy shortwave), **metal** (8-bit console noise ringing at the drone's pitch). Only metal is pitched. | which kind; in between, two neighbors blend | dust: density · wind: how broad the gusts are · surf: how bright the foam is · static: how crunchy |
+| `7` | **FOLD** | Sines through a wavefolder (root, fifth, sub), West Coast style: past a threshold the wave folds back on itself and harmonics bloom. Because the room drives SPREAD, movement opens and closes the tone itself, not just the filter. | skews the folds: hollow and clarinet-like at 0, reedy then brassy as even harmonics come in | how far it folds: a clean sine at 0, brighter fold by fold |
+| `8` | **NOISE** | Five kinds of noise, not just colors: **dust** (vinyl crackle, embers), **wind** (broad gusts wandering on their own), **surf** (waves building and breaking every 6–12 s), **static** (choppy shortwave), **metal** (8-bit console noise ringing at the drone's pitch). Only metal is pitched. | which kind; in between, two neighbors blend | dust: density · wind: how broad the gusts are · surf: how bright the foam is · static: how crunchy |
 
 ### Voices
 
@@ -145,6 +147,8 @@ Every engine follows this. ORG shares its 16 partials among the voices, so at 1 
 - **Drift** (tap `a`): the drone wanders by itself. Every 20–60 seconds the root glides to another note of the scale within a fifth of where you started; movement in the room makes it wander sooner. A `~` after the scale in the header shows it's on. Playing a note re-centers it.
 - **Autopilot** (hold `a` for 3 seconds; the footer counts down): FRESNELDRONE plays itself, for as long as you let it. The header's title turns into an `AUTO` tag. It drifts the root (as above), eases the params toward new settings every minute or two (slowly, over about half a minute; pitch, noise and level stay yours), re-rolls one modulation slot every half minute or so, and every 3–6 minutes starts a new section: the sound fades out, the scale changes (and often the engine, the voices, the interval, the LFO shape or the key), and it swells back in. The room keeps steering throughout. Press `a` again to take over; `u` goes back to the patch from before the autopilot.
 - **Slow fade** (hold `q`): the drone fades out over a few seconds; let go and it swells back.
+- **Room amount** (`_` `+`): how strongly the room moves the sound, 0–200% in steps of 10. At 0% the drone ignores the room (the LFO keeps going); above 100% every room-driven slot reaches further. Turn it down when people are walking around, up when the room is still. The footer shows `ROOM %` instead of `DSP %` while it isn't 100%; it goes back to 100% at power-up.
+- **Blackout** (`\`): the screen goes dark and the drone plays on, for dark rooms and long autopilot runs on battery. Any key brings the screen back (that key does nothing else).
 - **Undo** (`u`): steps back through the last 8 big changes: randomize (and the held mod roll), preset loads, notes, root and octave, scale, engine, voices, interval and effect switches. Small param nudges aren't recorded.
 
 ## Params
@@ -196,7 +200,7 @@ A note sets the drone's root in the current octave (`9` `0` change the octave). 
 | **Enter** | on Params and Matrix it edits; elsewhere play / stop |
 | **Tab** | next page |
 | `o` | waterfall view: XY → RADIAL → 3D (from another page, back to the waterfall) |
-| `1`–`7` | engine |
+| `1`–`8` | engine |
 | `p` | voices: 1, 2 or 3 (see below) |
 | `[` `]` | root note down / up a semitone |
 | `9` `0` | octave down / up |
@@ -206,6 +210,8 @@ A note sets the drone's root in the current octave (`9` `0` change the octave). 
 | `w` then `1`–`8` | save (write) a preset to the SD card |
 | `l` then `1`–`8` | load a preset from the SD card |
 | `-` `=` | volume |
+| `_` `+` | room amount: how strongly the room moves the sound (0–200%) |
+| `\` | blackout: screen off, the drone plays on; any key wakes it |
 | `` ` `` | options |
 | `i` | help |
 | `;` `.` | up / down |

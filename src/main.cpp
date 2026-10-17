@@ -1,6 +1,6 @@
 // FRESNELDRONE: a drone synth for the M5Stack Cardputer ADV, played by the room.
 // WiFi Channel State Information (bodies moving bend the multipath) drives
-// seven drone engines and an FX chain through a mod matrix.
+// eight drone engines and an FX chain through a mod matrix.
 #ifndef FRESNELDRONE_HOST  // test/screens.cpp supplies stand-ins to render the UI on a laptop
 #include <M5Cardputer.h>
 #include <Preferences.h>
@@ -41,7 +41,7 @@ constexpr int NTHEME = sizeof THEMES / sizeof *THEMES;
 static uint8_t theme = 0;  // saved in NVS
 // Header tag per engine, the same in every theme (no amber: that means "warning").
 static const uint16_t ENGINE_COLOR[] = {rgb(0, 220, 255),  rgb(255, 120, 30), rgb(180, 110, 255), rgb(120, 255, 60),
-                                        rgb(255, 70, 170), rgb(255, 225, 40), rgb(60, 140, 255)};
+                                        rgb(255, 70, 170), rgb(255, 225, 40), rgb(255, 90, 80),  rgb(60, 140, 255)};
 static_assert(sizeof ENGINE_COLOR / sizeof *ENGINE_COLOR == NENGINE, "one colour per engine");
 
 static void applyTheme() {
@@ -67,6 +67,9 @@ static const char* const HINTS[NPAGE] = {"TAB page  o view  z-m notes  i help", 
 // unity gain, so a full-scale drone hard-clips in its mixer above that.
 constexpr int VOL_MAX = 180;
 static int page = PG_WATERFALL, overlay = OV_NONE, pCur = 0, mRow = 0, mCol = 0, optCur = 0, vol = 180;
+static int roomPct = 100;  // room amount (_ +): how strongly the room moves the sound, like vol not saved
+static bool blackout = false;  // backslash: backlight off, the drone plays on; any key wakes it
+static uint8_t bright = 0;     // the backlight before it
 static const char* const WF_VIEW[] = {"XY", "RADIAL", "3D"};  // how the waterfall draws its history: o cycles
 constexpr int NWFVIEW = sizeof WF_VIEW / sizeof *WF_VIEW;
 static uint8_t wfView = 0;  // saved in NVS
@@ -600,12 +603,12 @@ static void drawMatrix() {
 
 static void drawHelp() {
   static const char* const K[][2] = {  // three columns of ten: keys <= 3 chars, notes <= 9
-      {"SPC", "play/stop"}, {"z-m", "notes"},     {"s-j", "sharps"},    {"SH", "note +8va"}, {"1-7", "engine"},
+      {"SPC", "play/stop"}, {"z-m", "notes"},     {"s-j", "sharps"},    {"SH", "note +8va"}, {"1-8", "engine"},
       {"p", "voices"},      {"t", "interval"},    {"9 0", "octave"},    {"[ ]", "root -/+"}, {"k", "scale"},
       {"a", "drift"},       {"a", "hold:auto"},   {"f", "freeze"},      {"q", "hold:fade"},  {"u", "undo"},
       {"r", "rnd/hold"},    {"e", "calibrate"},   {"TAB", "page"},      {"o", "view"},        {";.", "up/down"},   {",/", "adjust"},
       {"ENT", "edit/play"}, {"DEL", "clr slot"},  {"Fn", "+1-7: fx"},   {"w l", "save/load"}, {"- =", "volume"},
-      {"`", "options"},     {"i", "help"}};
+      {"_ +", "room amt"},  {"\\", "blackout"},  {"`", "options"},     {"i", "help"}};
   for (int i = 0; i < (int)(sizeof K / sizeof *K); i++) {
     int x = 1 + (i / 10) * 80, y = 15 + (i % 10) * 10;
     cv.setTextColor(C_HI);
@@ -680,10 +683,12 @@ static void drawFooter() {
     int h = 1 + (int)(motHist[(histHead + i) % HIST] * 8);
     cv.drawFastVLine(24 + i * 2, 124 - h, h, ramp[6 + i * 25 / HIST]);
   }
-  char s[24];
+  char s[24], lead[12];
+  if (roomPct != 100) snprintf(lead, sizeof lead, "ROOM%3d%%", roomPct);  // in place of the DSP load
+  else snprintf(lead, sizeof lead, "DSP%3d%%", (int)(dspLoad * 100));
   if (!playing) snprintf(s, sizeof s, "STOPPED");
-  else if (audioOn) snprintf(s, sizeof s, "DSP%3d%%  VOL%3d", (int)(dspLoad * 100), vol * 100 / VOL_MAX);
-  else snprintf(s, sizeof s, "DSP%3d%%  MUTED", (int)(dspLoad * 100));
+  else if (audioOn) snprintf(s, sizeof s, "%s  VOL%3d", lead, vol * 100 / VOL_MAX);
+  else snprintf(s, sizeof s, "%s  MUTED", lead);
   cv.setTextColor(playing ? C_DIM : C_WARN);
   cv.drawRightString(s, W - 3, 116);
   char hold[40] = "";  // r or a held: count down to the hold action
@@ -1192,7 +1197,7 @@ static void onKey(char c) {
       say(WF_VIEW[wfView]);
       break;
     case '`': overlay = OV_OPTIONS; break;
-    case '1': case '2': case '3': case '4': case '5': case '6': case '7':
+    case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8':
       remember();
       P.engine = c - '1';
       break;
@@ -1261,6 +1266,19 @@ static void onKey(char c) {
       vol = constrain(vol + (c == '=' ? 12 : -12), 0, VOL_MAX);
       applyVolume();
       break;
+    case '_': case '+': {
+      roomPct = constrain(roomPct + (c == '+' ? 10 : -10), 0, 200);
+      syn.room = roomPct / 100.f;
+      char s[16];
+      snprintf(s, sizeof s, "ROOM %d%%", roomPct);
+      say(s);
+      break;
+    }
+    case '\\':
+      bright = M5Cardputer.Display.getBrightness();
+      M5Cardputer.Display.setBrightness(0);
+      blackout = true;
+      break;
     case ';': adjust(-1, 0); break;
     case '.': adjust(1, 0); break;
     case ',': adjust(0, -1); break;
@@ -1276,6 +1294,10 @@ static void serviceKeys() {
   uint32_t now = millis();
   if (kb.isChange()) {
     held = kb.isPressed() ? readKey() : 0;
+    if (blackout && held) {  // this key only wakes the screen
+      blackout = false, held = 0;
+      M5Cardputer.Display.setBrightness(bright);
+    }
     if (holdAt && !held) holdKey == 'r' ? randomize() : toggleDrift();  // let go before the hold fired
     syn.duck = held == 'q' || autoSwapAt;  // q: fade out while held, swell back on release
     repeatAt = now + 350;
@@ -1284,7 +1306,7 @@ static void serviceKeys() {
   } else if (holdAt && now - holdAt >= HOLD_MS) {
     holdAt = 0;
     holdKey == 'r' ? randomizeMods() : setAuto(true);
-  } else if (held && strchr(";.,/-=", held) && now >= repeatAt) {  // auto-repeat nav + volume
+  } else if (held && strchr(";.,/-=_+", held) && now >= repeatAt) {  // auto-repeat nav, volume, room
     repeatAt = now + 45;
     onKey(held);
   }
@@ -1387,7 +1409,7 @@ void loop() {
   bool cal = csi.calLeft > 0;
   if (wasCal && !cal && csi.calibrated) say("BASELINE SET");
   wasCal = cal;
-  if (now - tDraw >= 33) {
+  if (now - tDraw >= 33 && !blackout) {
     tDraw = now;
     draw();
   }
