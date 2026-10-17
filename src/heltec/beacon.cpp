@@ -100,6 +100,7 @@ void setup() {
   Serial.begin(115200);
   pinMode(LED_BUILTIN, OUTPUT);
   int st = radio.beginFSK(LORA_FREQ, LORA_BR, LORA_DEV, LORA_RXBW, LORA_POWER, LORA_PREAMBLE, 1.8f);  // the V3's TCXO runs at 1.8 V
+  radio.standbyXOSC = true;  // TCXO stays on: TX <-> RX in microseconds (src/link.h)
   if (st == RADIOLIB_ERR_NONE) st = radio.setDataShaping(RADIOLIB_SHAPING_0_5);
   if (st == RADIOLIB_ERR_NONE) st = radio.setSyncWord(LORA_SYNC, sizeof LORA_SYNC);
   while (st != RADIOLIB_ERR_NONE) {  // fast blink: no radio

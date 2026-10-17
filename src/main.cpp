@@ -195,6 +195,7 @@ static bool loraInit() {
       Serial.printf("lora: radio up, TCXO %.1f V\n", tcxo);
       break;
     }
+  lora.standbyXOSC = true;  // TCXO stays on: TX <-> RX in microseconds (src/link.h)
   if (st == RADIOLIB_ERR_NONE) st = lora.setDataShaping(RADIOLIB_SHAPING_0_5);
   if (st == RADIOLIB_ERR_NONE) st = lora.setSyncWord(LORA_SYNC, sizeof LORA_SYNC);
   if (st != RADIOLIB_ERR_NONE) return Serial.printf("lora: radio setup failed (%d)\n", st), false;
