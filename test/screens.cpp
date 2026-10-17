@@ -106,6 +106,22 @@ struct M5Canvas {
   void fillSprite(uint16_t c) { fillRect(0, 0, 240, 135, c); }
   void drawFastHLine(int x, int y, int w, uint16_t c) { fillRect(x, y, w, 1, c); }
   void drawFastVLine(int x, int y, int h, uint16_t c) { fillRect(x, y, 1, h, c); }
+  void drawLine(int x0, int y0, int x1, int y1, uint16_t c) {  // Bresenham
+    int dx = abs(x1 - x0), dy = -abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, e = dx + dy;
+    for (drawPixel(x0, y0, c); x0 != x1 || y0 != y1; drawPixel(x0, y0, c)) {
+      int e2 = 2 * e;
+      if (e2 >= dy) e += dy, x0 += sx;
+      if (e2 <= dx) e += dx, y0 += sy;
+    }
+  }
+  void fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) {  // pixels inside or on an edge
+    auto side = [](int ax, int ay, int bx, int by, int x, int y) { return (bx - ax) * (y - ay) - (by - ay) * (x - ax); };
+    for (int y = std::min({y0, y1, y2}); y <= std::max({y0, y1, y2}); y++)
+      for (int x = std::min({x0, x1, x2}); x <= std::max({x0, x1, x2}); x++) {
+        int a = side(x0, y0, x1, y1, x, y), b = side(x1, y1, x2, y2, x, y), d = side(x2, y2, x0, y0, x, y);
+        if ((a >= 0 && b >= 0 && d >= 0) || (a <= 0 && b <= 0 && d <= 0)) drawPixel(x, y, c);
+      }
+  }
   void drawRect(int x, int y, int w, int h, uint16_t c) { fillRect(x, y, w, 1, c); fillRect(x, y + h - 1, w, 1, c); fillRect(x, y, 1, h, c); fillRect(x + w - 1, y, 1, h, c); }
   void fillRoundRect(int x, int y, int w, int h, int, uint16_t c) { fillRect(x + 1, y, w - 2, h, c); fillRect(x, y + 1, w, h - 2, c); }
   int textWidth(const char* s) { return (int)strlen(s) * 6 * size; }

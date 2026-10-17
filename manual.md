@@ -41,7 +41,7 @@ A picture of the WiFi signal over time. Each column is one of 52 slices of the W
 
 Press `o` to change how the waterfall draws its history (the choice is remembered):
 - **XY**: as above, slices left to right, time top to bottom.
-- **RADIAL**: the slices go round the clock from 12, the newest reading is in the middle and the history ripples outward: movement spreads as rings.
+- **RADIAL**: each reading is a ring that bulges with the signal, slices going round the clock from 12. The newest is in the middle and older ones ripple outward like Fresnel zones: movement shows as bulges travelling out.
 - **3D**: each reading is a ridge, the newest in front and older ones further back, like a mountain range moving toward you.
 
 On the right are live meters for the eight **mod sources** (explained below). The dim bar behind each meter is a fading memory of its recent peak.

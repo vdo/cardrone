@@ -361,10 +361,7 @@ static void backdrop() {
 
 // Boot: a CRT warming up, then the title over a rippling subcarrier skyline.
 static void bootAnimation(const char* crash) {
-  static const char* const TAGLINES[] = {"the room plays the drone",        "every body bends the signal",
-                                         "listening to the air",            "your movement is the instrument",
-                                         "52 subcarriers, one drone",       "slow music for still rooms"};
-  const char* sub = TAGLINES[esp_random() % (sizeof TAGLINES / sizeof *TAGLINES)];
+  const char* sub = "Simplicity lies concealed in this chaos";  // 39 characters: the screen's width
   const int len = strlen(sub), cy = H / 2;
   const uint32_t end = 900 + len * 30 + 1500;  // typing, then 1.5 s to read
   for (uint32_t t0 = millis(), t = 0; t < end; t = millis() - t0) {
@@ -478,15 +475,29 @@ static void drawWaterfall() {
   if (wfView == 0) {  // XY: subcarrier ->, time v
     for (int r = 0; r < WF_ROWS; r++)
       for (int k = 0; k < NSC; k++) cv.fillRect(4 + k * 3, 15 + r * 2, 3, 2, ramp[hist(r)[k]]);
-  } else if (wfView == 1) {  // RADIAL: subcarriers clockwise from 12, newest in the middle, rippling out
-    const int R = bh / 2 - 2, r0 = 4;
-    for (int y = -R; y < R; y += 2)  // 2x2 blocks: half the radial rows, a quarter of the atan2s
-      for (int x = -R; x < R; x += 2) {
-        float d = sqrtf((x + 1) * (x + 1) + (y + 1) * (y + 1));
-        if (d < r0 || d >= R) continue;
-        int k = (int)((atan2f(x + 1, -(y + 1)) / 6.2832f + 1) * NSC) % NSC;
-        cv.fillRect(cx + x, cy + y, 2, 2, ramp[hist((int)((d - r0) / (R - r0) * WF_ROWS))[k]]);
+  } else if (wfView == 1) {  // RADIAL: every fourth row as a ring bulging outward with the signal,
+    // subcarriers clockwise from 12; the newest in the middle, older ones rippling out like Fresnel zones
+    constexpr int SEG = NSC * 2;  // points per ring: halfway points round the outline
+    float sn[SEG + 1], cs[SEG + 1];
+    for (int i = 0; i <= SEG; i++) sn[i] = sinf(i * 6.2832f / SEG), cs[i] = cosf(i * 6.2832f / SEG);
+    for (int r = WF_ROWS - 4; r >= 0; r -= 4) {  // outside in: each ring hides what's behind its bulges
+      const uint8_t* row = hist(r);
+      float z = (float)r / WF_ROWS, rb = 6 + 26 * z, amp = 5 + 10 * z;  // age 0..1: baseline, bulge
+      int bx[SEG + 1], by[SEG + 1], px[SEG + 1], py[SEG + 1];  // baseline circle, outline
+      uint16_t col[SEG + 1];
+      for (int i = 0; i <= SEG; i++) {
+        int k = i % SEG / 2;
+        float v = i % 2 ? (row[k] + row[(k + 1) % NSC]) / 2.f : row[k], rr = rb + v / 31 * amp;  // 0..31
+        bx[i] = cx + lroundf(sn[i] * rb), by[i] = cy - lroundf(cs[i] * rb);
+        px[i] = cx + lroundf(sn[i] * rr), py[i] = cy - lroundf(cs[i] * rr);
+        col[i] = ramp[(int)(v * (1 - 0.6f * z))];  // dimmer further out
       }
+      for (int i = 1; i <= SEG; i++) {  // the ring's body, then its outline on top
+        cv.fillTriangle(bx[i - 1], by[i - 1], bx[i], by[i], px[i], py[i], C_BG);
+        cv.fillTriangle(bx[i - 1], by[i - 1], px[i], py[i], px[i - 1], py[i - 1], C_BG);
+      }
+      for (int i = 1; i <= SEG; i++) cv.drawLine(px[i - 1], py[i - 1], px[i], py[i], col[i]);
+    }
   } else {  // 3D: every other row as a ridge, newest in front, older ones further back and smaller
     for (int r = WF_ROWS - 2; r >= 0; r -= 2) {  // back to front: each ridge hides what's behind it
       const uint8_t* row = hist(r);
