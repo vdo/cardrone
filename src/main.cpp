@@ -182,7 +182,7 @@ static void IRAM_ATTR onLoraRx() { loraRx = true, loraRxUs = micros(); }
 static bool loraInit() {
   if (loraUp) return true;
   m5::PI4IOE5V6408_Class ioe(0x43, 400000, &m5::In_I2C);  // the cap's IO expander: P0 powers the antenna switch
-  if (!ioe.begin()) return false;  // no cap
+  if (!ioe.begin()) return Serial.println("lora: no IO expander at 0x43 (no cap?)"), false;
   ioe.setDirection(0, true);
   ioe.setHighImpedance(0, false);
   ioe.digitalWrite(0, true);
@@ -191,10 +191,13 @@ static bool loraInit() {
   SPI.begin(40, 39, 14, 12);
   int st = -1;
   for (float tcxo : {3.0f, 1.8f, 0.f})  // 3.0 V as in M5's examples; fall back if this cap differs
-    if ((st = lora.beginFSK(LORA_FREQ, LORA_BR, LORA_DEV, LORA_RXBW, LORA_POWER, 16, tcxo, true)) == RADIOLIB_ERR_NONE) break;
+    if ((st = lora.beginFSK(LORA_FREQ, LORA_BR, LORA_DEV, LORA_RXBW, LORA_POWER, LORA_PREAMBLE, tcxo, true)) == RADIOLIB_ERR_NONE) {
+      Serial.printf("lora: radio up, TCXO %.1f V\n", tcxo);
+      break;
+    }
   if (st == RADIOLIB_ERR_NONE) st = lora.setDataShaping(RADIOLIB_SHAPING_0_5);
   if (st == RADIOLIB_ERR_NONE) st = lora.setSyncWord(LORA_SYNC, sizeof LORA_SYNC);
-  if (st != RADIOLIB_ERR_NONE) return false;
+  if (st != RADIOLIB_ERR_NONE) return Serial.printf("lora: radio setup failed (%d)\n", st), false;
   lora.setPacketReceivedAction(onLoraRx);
   return loraUp = true;
 }
@@ -229,7 +232,7 @@ static void loraPoll(uint32_t now) {
       sum += dbm, n++, loraPkts++, lastPkt = now;
       tch = bc.touch / 1000.f;
       // A Status fits in the gap after a beacon only if it goes out right away.
-      if (now - tStatus >= 250 && micros() - loraRxUs < 1500) tStatus = now, loraStatus();
+      if (now - tStatus >= 250 && micros() - loraRxUs < 2000) tStatus = now, loraStatus();
     }
   }
   if (now - tFrame > 200) tFrame = now - 20;  // after a stall, don't replay it frame by frame

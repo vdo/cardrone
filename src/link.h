@@ -7,6 +7,10 @@
 // which allows 5 mW ERP with no duty-cycle limit. +5 dBm into a 2-3 dBi antenna stays under.
 constexpr float LORA_FREQ = 869.85f, LORA_BR = 50, LORA_DEV = 25, LORA_RXBW = 156.2f;
 constexpr int8_t LORA_POWER = 5;
+// Bits. The receiver waits for min(this, sync word bits) of preamble before it looks for
+// the sync word: a preamble no longer than that leaves no bits for the transmitter's ramp-up
+// or a receiver that has only just switched to RX (the Heltec, after each beacon).
+constexpr uint16_t LORA_PREAMBLE = 64;
 static uint8_t LORA_SYNC[] = {0xCA, 0xD0, 0x4E};  // only CARDRONE packets count
 
 // Heltec -> Cardputer, 100 a second: the Cardputer measures how strongly each arrives.
