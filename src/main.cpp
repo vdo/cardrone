@@ -207,13 +207,14 @@ static void loraStop() {
 }
 
 // How well the Heltec is heard, for its screen.
-static void loraStatus() {
+static bool loraStatus() {
   Status st;
   st.hz = csiHz > 255 ? 255 : csiHz;
   st.dbm = csi.rssi;
-  lora.transmit((uint8_t*)&st, sizeof st);
+  bool ok = lora.transmit((uint8_t*)&st, sizeof st) == RADIOLIB_ERR_NONE;
   loraRx = false;  // the transmit's own interrupt
   lora.startReceive();
+  return ok;
 }
 
 // From loop(), like the SD card (they share SPI): beacons in, 50 Hz frames out.
@@ -221,8 +222,12 @@ static void loraPoll(uint32_t now) {
   static float sum = 0, lvl = 0, tch = 0;
   static int n = 0;
   static uint32_t tFrame = 0, lastPkt = 0, tStatus = 0;
+  static uint32_t tLog = 0, irqs = 0, bad = 0, replies = 0, pkts0 = 0;  // diagnostics, once a second on USB serial
+  static float peak = -200;
+  peak = fmaxf(peak, lora.getRSSI(false));  // energy on the channel, packet or not
   if (loraRx) {  // beacons that arrived while loop() was busy are lost; the latest is kept
     loraRx = false;
+    irqs++;
     uint8_t b[sizeof(Status)];
     size_t len = lora.getPacketLength();
     float dbm = lora.getRSSI(true);
@@ -232,8 +237,15 @@ static void loraPoll(uint32_t now) {
       sum += dbm, n++, loraPkts++, lastPkt = now;
       tch = bc.touch / 1000.f;
       // A Status fits in the gap after a beacon only if it goes out right away.
-      if (now - tStatus >= 250 && micros() - loraRxUs < 2000) tStatus = now, loraStatus();
+      if (now - tStatus >= 250 && micros() - loraRxUs < 2000) tStatus = now, replies += loraStatus();
+    } else {
+      bad++;
     }
+  }
+  if (now - tLog >= 1000) {
+    Serial.printf("lora: irq %lu  beacons %lu  bad %lu  replies %lu  level %d dBm  peak %.0f dBm\n", irqs,
+                  loraPkts - pkts0, bad, replies, csi.rssi, peak);
+    tLog = now, irqs = bad = replies = 0, pkts0 = loraPkts, peak = -200;
   }
   if (now - tFrame > 200) tFrame = now - 20;  // after a stall, don't replay it frame by frame
   for (; now - tFrame >= 20; tFrame += 20) {  // 50 Hz: the rate the smoothing is tuned to
@@ -1197,6 +1209,7 @@ static void serviceKeys() {
 // ── main ─────────────────────────────────────────────────────────────────────
 void setup() {
   auto cfg = M5.config();
+  cfg.serial_baudrate = 115200;  // USB serial: crash reasons, free heap, LoRa diagnostics
   M5Cardputer.begin(cfg, true);
   M5Cardputer.Display.setRotation(1);
   cv.setColorDepth(16);

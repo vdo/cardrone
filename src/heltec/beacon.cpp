@@ -24,6 +24,7 @@ static float base[NT];  // untouched reading per pin
 static struct {
   uint32_t sent = 0, txUs = 0;  // beacons sent; how long the last took
   uint32_t replies = 0;         // Statuses received
+  uint32_t irqs = 0, bad = 0;   // anything received; of which not a Status (diagnostics)
   Status st;                    // the Cardputer's last word
   float backDbm = 0;            // its level here
   uint32_t heardAt = 0;         // millis(); 0 = never
@@ -120,11 +121,14 @@ void loop() {
   vTaskDelayUntil(&wake, pdMS_TO_TICKS(10));  // 100 beacons a second
   if (rxDone) {  // the Cardputer answered in the gap after the last beacon
     rxDone = false;
+    v.irqs++;
     uint8_t b[sizeof(Status)];
     size_t len = radio.getPacketLength();
     float dbm = radio.getRSSI(true);
     if (radio.readData(b, sizeof b) == RADIOLIB_ERR_NONE && isPacket<Status>(b, len))
       memcpy(&v.st, b, sizeof v.st), v.backDbm = dbm, v.heardAt = millis(), v.replies++;
+    else
+      v.bad++;
   }
   float rise = 0;  // the most-touched pin
   for (int i = 0; i < NT; i++) {
@@ -142,7 +146,7 @@ void loop() {
   digitalWrite(LED_BUILTIN, bc.seq & 64);  // slow blink: sending
   if (millis() - tLog >= 1000) {
     tLog = millis();
-    Serial.printf("sent %lu  touch %.3f  cardputer %s\n", (unsigned long)v.sent, rise,
-                  v.heardAt && millis() - v.heardAt < 3000 ? "heard" : "not heard");
+    Serial.printf("sent %lu  tx %lu us  rx irq %lu  replies %lu  bad %lu  touch %.3f\n", (unsigned long)v.sent,
+                  (unsigned long)v.txUs, (unsigned long)v.irqs, (unsigned long)v.replies, (unsigned long)v.bad, rise);
   }
 }
