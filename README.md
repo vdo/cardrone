@@ -48,7 +48,7 @@ The network screen opens on first boot, and later from `` ` `` → NETWORK. Your
 | AUTO | Hops channels 1–13 for ~3 s, counts CSI frames per transmitter, and locks onto the busiest. Re-surveys after 8 s of silence. No password. | whatever's busiest nearby |
 | JOIN | Associates, then pings the router 50×/s so it keeps answering. Needs the password. | steadiest, ~50 Hz+ |
 | LISTEN | Promiscuous on one network's channel, filtered to that router. No password. | depends on the router's traffic; beacons sent at 1 Mbps yield no CSI |
-| LORA | No WiFi: measures a Heltec's packets with the Cap LoRa-1262 (see below). | ~35–50 Hz |
+| LORA | No WiFi: measures a Heltec's packets with the Cap LoRa-1262 (see below). | 50 Hz |
 
 The header shows the mode letter, channel and CSI rate, e.g. `A6 48Hz` (`LR 98Hz` in LoRa mode: packets per second), then the battery. The drone stays silent until you press `Space` (or a note key). Started before CSI arrives, it hums on the LFO.
 
@@ -103,7 +103,7 @@ TX 50/s  AIR 23%           beacons sent per second, share of time on air
 BAT 3.95V 31C UP 1:23:45   battery (-- without one), chip temperature, uptime
 ```
 
-The Cardputer reads ~35–50 of them a second (it skips the ones that arrive while it draws its screen) and holds the last level in between. There's no shape and no phase on this link, so the slots mean something a little different:
+A task woken by the radio reads each one as it lands (all 50 a second, measured across a flat at −79 dBm) and restarts the receiver after it: on a weak link the receiver otherwise drifts off and hears nothing until restarted. There's no shape and no phase on this link, so the slots mean something a little different:
 
 | Slot | LoRa | What moves it |
 |---|---|---|

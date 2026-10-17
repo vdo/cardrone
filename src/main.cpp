@@ -236,7 +236,7 @@ static bool loraStatus() {
 // go out on a 50 Hz clock, the rate the smoothing and the wobble filters assume, holding
 // the last level when a beacon is missed.
 static void loraTask(void*) {
-  uint32_t tStatus = 0, tQuiet = 0, tStats = 0, tFrame = 0;
+  uint32_t tStatus = 0, tArm = 0, tStats = 0, tFrame = 0;
   float lvl = -100, tch = 0;
   for (;;) {
     bool irq = xSemaphoreTake(loraSem, pdMS_TO_TICKS(5)) == pdTRUE;
@@ -254,7 +254,9 @@ static void loraTask(void*) {
       tStats = now;
     }
     if (!irq) {  // nothing landed for 5 ms
-      if (now - loraLast > 2000 && now - tQuiet > 2000) tQuiet = now, lora.startReceive();  // quiet: re-arm
+      // Re-arm when nothing has landed for a beacon and a half: on a weak link the receiver
+      // drifts off between packets and hears nothing more until it is restarted.
+      if (now - tArm >= 30) tArm = now, lora.startReceive();
       continue;
     }
     loraIrqs = loraIrqs + 1;
@@ -269,6 +271,8 @@ static void loraTask(void*) {
     memcpy(&bc, b, sizeof bc);
     loraPkts = loraPkts + 1, loraLast = now, lvl = dbm, tch = bc.touch / 1000.f;
     if (now - tStatus >= 250) tStatus = now, loraReplies = loraReplies + loraStatus();  // the Heltec listens only until its next beacon
+    else lora.startReceive();  // fresh for the next beacon, 20 ms away (loraStatus restarts it too)
+    tArm = now;
   }
 }
 

@@ -243,7 +243,7 @@ You need the M5Stack **Cap LoRa-1262** on the Cardputer and a **Heltec WiFi LoRa
 1. Screw both antennas on. The Heltec must never transmit without its antenna.
 2. Power the Heltec: a USB charger, a power bank or its battery plug. Its small LED blinks slowly while it sends.
 3. Put it somewhere across the space, so people walk between it and the Cardputer. Another room works too.
-4. On the Cardputer: `` ` `` → NETWORK → **LORA**. The header shows `LR` and about `40Hz`.
+4. On the Cardputer: `` ` `` → NETWORK → **LORA**. The header shows `LR` and about `50Hz`.
 5. Calibrate (`e`) with nobody around to turn LVL into a presence sensor.
 
 The Heltec sends tiny radio packets 50 times a second on 869.85 MHz, at a power and frequency that are allowed without limits in Europe. The Cardputer answers a few times a second, so the Heltec's little screen shows how good the link is:
