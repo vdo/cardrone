@@ -19,7 +19,7 @@ Rendered by the firmware's own drawing code from a simulated room, in which some
 | <img src="docs/cal_countdown.png" width="360" alt="Calibration countdown"> | <img src="docs/cal_capture.png" width="360" alt="Calibration capture"> |
 | **Calibrate** (`e`): 5 s to leave the room… | …then the empty room is captured. Any key cancels. |
 | <img src="docs/lora.png" width="360" alt="LoRa mode"> | |
-| **LoRa mode**: the waterfall becomes the link's wobble spectrum (0.2 Hz left, 10 Hz right): someone walking lights it up. TCH and LVL take PHS's and RSI's places. | |
+| **LoRa mode**: the waterfall becomes the link's wobble spectrum (0.15 Hz left, 6 Hz right, log-spaced): someone walking lights it up. TCH and LVL take PHS's and RSI's places. | |
 
 ## Build / flash
 
@@ -111,9 +111,9 @@ The Cardputer reads ~60–100 beacons a second: it skips the ones that arrive wh
 | PHS → **TCH** | the Heltec's touch pins GPIO2–7: a fingertip on a bare header pin; a wire or foil on one senses a hand a few cm away | you, playing it |
 | FLX | packet-to-packet change of the level | walking, fast movement |
 | RSI → **LVL** | the level (−100 to −40 dBm); after `e`, its distance from the empty flat's level (6 dB = full) | someone being there, doors, standing in the path |
-| LO / MID / HI | how fast the level wobbles: under 0.5 Hz, 0.5–2 Hz, 2–8 Hz | settling and doors / gestures / walking |
+| LO / MID / HI | thirds of the wobble spectrum: 0.15–0.5 Hz, 0.5–1.75 Hz, 1.75–6 Hz | settling and swaying / gestures / walking |
 
-The waterfall and the ORG engine's partials follow the wobble spectrum (0.2–10 Hz) instead of the subcarriers. Place the two boards so people pass between them; a body in the direct path makes the biggest change.
+The waterfall and the ORG engine's partials follow the wobble spectrum instead of the subcarriers: 52 bandpass filters, log-spaced from 0.15 to 6 Hz (where people move a sub-GHz link), quicker columns boosted (×√f) since motion has far less energy at quick rates. Fast columns react in ~0.2 s, the slowest within ~2 s. The MOD PROFILE (options) adds its own glide on top: NORMAL or SHARP feel immediate. Place the two boards so people pass between them; a body in the direct path makes the biggest change.
 
 ## Mod sources (from CSI)
 

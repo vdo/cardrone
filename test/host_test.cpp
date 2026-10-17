@@ -112,13 +112,16 @@ int main(int argc, char** argv) {
     printf("lora: still MOT %.2f FLX %.2f HI %.2f  sway LO %.2f MID %.2f HI %.2f\n", sMot, sFlx, sHi, c.src[S_LO],
            c.src[S_MID], c.src[S_HI]);
     assert(sMot < 0.35f && sHi < 0.35f && c.src[S_LO] > 0.5f && c.src[S_LO] > c.src[S_HI] + 0.3f);
-    link(-62, 4, 3, 0, 250);  // 5 s walking: 4 dB fades at 3 Hz
+    int react = -1;  // 5 s walking: 4 dB fades at 3 Hz; HI must follow within half a second
+    for (int f = 0; f < 250; f++)
+      if (link(-62, 4, 3, 0, 1), react < 0 && c.src[S_HI] > 0.5f) react = f;
     int pk = 0;
     for (int k = 1; k < NSC; k++)
-      if (c.prof[k] > c.prof[pk]) pk = k;
-    printf("lora: walking MOT %.2f FLX %.2f HI %.2f  peak %.1f Hz\n", c.src[S_MOT], c.src[S_FLX], c.src[S_HI], (pk + 1) * 50.f / LN);
+      if (c.benv[k] > c.benv[pk]) pk = k;
+    printf("lora: walking MOT %.2f FLX %.2f HI %.2f  peak %.1f Hz\n", c.src[S_MOT], c.src[S_FLX], c.src[S_HI], wobHz(pk));
     assert(c.src[S_MOT] > sMot + 0.3f && c.src[S_FLX] > sFlx + 0.3f && c.src[S_HI] > 0.6f);
-    assert(fabsf((pk + 1) * 50.f / LN - 3) < 0.5f);
+    assert(fabsf(wobHz(pk) - 3) < 0.5f && c.prof[pk] > 0.8f);  // the walking rate lights up
+    assert(react >= 0 && react * 20 < 500);
     link(-62, 0, 0, 0.3f, 50);
     assert(c.src[S_PHS] > 0.9f);  // TCH
     link(-62, 0, 0, 0, 50);
