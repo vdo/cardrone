@@ -1,5 +1,5 @@
 // CARDRONE beacon for the Heltec WiFi LoRa 32 V3: the far end of LoRa mode.
-// Sends a Beacon 100 times a second on 869.85 MHz (src/link.h); the Cardputer measures
+// Sends a Beacon 50 times a second on 869.85 MHz (src/link.h); the Cardputer measures
 // how strongly each one arrives, and bodies moving through the flat change that.
 // Each beacon also carries a touch reading: touch GPIO2-7 (bare header pins work; a
 // wire or foil on one senses a hand from further away) and TCH rises. Between beacons
@@ -122,7 +122,7 @@ void loop() {
   static TickType_t wake = xTaskGetTickCount();
   static Beacon bc;
   static uint32_t tLog = 0;
-  vTaskDelayUntil(&wake, pdMS_TO_TICKS(10));  // 100 beacons a second
+  vTaskDelayUntil(&wake, pdMS_TO_TICKS(20));  // 50 beacons a second
   if (rxDone) {  // the Cardputer answered in the gap after the last beacon
     rxDone = false;
     v.irqs++;

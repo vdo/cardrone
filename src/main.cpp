@@ -168,7 +168,7 @@ static void onCsi(void*, wifi_csi_info_t* info) {  // WiFi task, core 0
   }
 }
 
-// LoRa mode: the Heltec (src/heltec/beacon.cpp) sends 100 beacons a second; the cap
+// LoRa mode: the Heltec (src/heltec/beacon.cpp) sends 50 beacons a second; the cap
 // on the Cardputer measures how strongly each arrives (Csi::level()) and answers a few
 // times a second with a Status for the Heltec's screen (src/link.h).
 static uint32_t loraPkts = 0;

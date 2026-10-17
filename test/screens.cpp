@@ -230,7 +230,7 @@ int main(int argc, char** argv) {
     if (millis() >= next) {
       float v = -64 + walk * (3 * sinf(6.283f * 2.4f * t) + 1.5f * sinf(6.283f * 0.7f * t)) + 0.3f * (rand() / (float)RAND_MAX - 0.5f);
       csi.level(roundf(v * 2) / 2, t > 8 ? 0.4f : 0);
-      loraPkts += 2;  // 100 packets/s
+      loraPkts += 1;  // the Heltec sends 50 a second
       next += 20;
     }
     loop();

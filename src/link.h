@@ -18,7 +18,8 @@ constexpr uint16_t LORA_PREAMBLE = 64;
 // off, and every switch to TX or RX waits ~5 ms for it, longer than the gap after a beacon.
 static uint8_t LORA_SYNC[] = {0xCA, 0xD0, 0x4E};  // only CARDRONE packets count
 
-// Heltec -> Cardputer, 100 a second: the Cardputer measures how strongly each arrives.
+// Heltec -> Cardputer, 50 a second (as many as the Cardputer reads, and half the airtime
+// of 100 in a band others may use): the Cardputer measures how strongly each arrives.
 struct __attribute__((packed)) Beacon {
   char tag[2] = {'C', 'D'};
   uint8_t seq = 0;
