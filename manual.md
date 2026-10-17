@@ -7,7 +7,7 @@ You don't need to play notes. Pick a sound, press play, and let the room do the 
 ## Quick start
 
 1. Flash `cardrone.bin` (see the README) and power on.
-2. The first time, a **network screen** appears. Pick **AUTO** at the top. CARDRONE listens on every WiFi channel for a few seconds and locks onto the busiest signal it hears. No password needed.
+2. The first time, a **network screen** appears. **Recommended: pick your own WiFi network and JOIN it** (type the password). CARDRONE then keeps the router answering 50 times a second, which gives the steadiest readings and the best motion sensing. No password at hand? Pick **AUTO** at the top: it listens on every channel for a few seconds and locks onto the busiest signal, but how well it senses motion depends on how busy that signal happens to be.
 3. The drone is **silent until you press Space** (the boot screen and the footer remind you). Press Space to play, and again to stop. Or press a note key (see below) to start on that note. The boot screen's top-right corner shows the firmware version.
 4. Walk around, wave your arms, sit still. Watch the waterfall and listen.
 5. Press `i` any time for the key list, and `` ` `` (the key left of `1`) for options.
@@ -104,8 +104,8 @@ Press `e` (or Options → CALIBRATE). A big **LEAVE THE ROOM** countdown gives y
 
 ### Tips for good modulation
 
-- More WiFi readings per second means smoother, more responsive sources. 30–50 Hz is great; under 10 Hz gets sluggish.
-- **JOIN** mode gives the steadiest rate, because CARDRONE keeps the router busy answering pings.
+- **Connect to a WiFi network (JOIN) for proper motion sensing.** CARDRONE keeps the router busy answering pings, so readings arrive at a steady ~50 a second. AUTO and LISTEN only hear what other devices happen to send: the rate comes and goes, and motion reads patchy.
+- More WiFi readings per second means smoother, more responsive sources. 30–50 Hz is great; under 10 Hz gets sluggish (the header shows the rate).
 - Put the Cardputer somewhere people pass between it and the router: that's where the room is most "visible".
 
 ## Sound engines
@@ -230,7 +230,7 @@ Open from Options → NETWORK. Your choice is remembered and restored at the nex
 | Mode | How it works | When to use it |
 |---|---|---|
 | **AUTO** | Listens on all channels for ~3 seconds and locks onto the busiest WiFi device. If that device goes quiet for 8 seconds, it looks again. | Anywhere, no password. The easiest choice. |
-| **JOIN** | Connects to your network and pings the router 50 times a second, so it always has fresh readings. | At home: steadiest and smoothest. Needs the password. |
+| **JOIN** | Connects to your network and pings the router 50 times a second, so it always has fresh readings. | **Recommended** for proper motion sensing: steadiest and smoothest. Needs the password. |
 | **LISTEN** | Listens to one network without connecting. | When you can't join but there's a busy network nearby. Depends on how much traffic it has. |
 | **LORA** | No WiFi: listens for a Heltec board's radio packets (see below). | No WiFi around, or to cover a whole flat through walls. Needs the LoRa cap and a Heltec. |
 
