@@ -171,14 +171,21 @@ static void onCsi(void*, wifi_csi_info_t* info) {  // WiFi task, core 0
 // LoRa mode: the Heltec (src/heltec/beacon.cpp) sends 50 beacons a second; the cap
 // on the Cardputer measures how strongly each arrives (Csi::level()) and answers a few
 // times a second with a Status for the Heltec's screen (src/link.h).
-static uint32_t loraPkts = 0;
+static volatile uint32_t loraPkts = 0;
 #ifndef CARDRONE_HOST
 static Module* loraMod = new Module(5, 4, 3, 6, SPI);  // cap: NSS G5, IRQ G4, RST G3, BUSY G6; SPI shared with the SD card
 static SX1262 lora = loraMod;
 static bool loraUp = false;
-static volatile bool loraRx = false;
-static volatile uint32_t loraRxUs = 0;  // when it arrived: the Heltec only listens for a few ms after each beacon
-static void IRAM_ATTR onLoraRx() { loraRx = true, loraRxUs = micros(); }
+static volatile bool loraOn = false;      // loraTask may use the radio
+static SemaphoreHandle_t loraSem;         // given by the radio's interrupt
+static volatile uint32_t loraLast = 0, loraIrqs = 0, loraBad = 0, loraReplies = 0;  // last beacon (millis); diagnostics
+static volatile uint16_t loraChip[3];     // the radio's own counts over the last second: received, CRC errors, length errors
+static void IRAM_ATTR onLoraRx() {
+  BaseType_t woke = pdFALSE;
+  xSemaphoreGiveFromISR(loraSem, &woke);
+  if (woke) portYIELD_FROM_ISR();
+}
+static void loraTask(void*);
 
 static bool loraInit() {
   if (loraUp) return true;
@@ -202,11 +209,14 @@ static bool loraInit() {
   if (st == RADIOLIB_ERR_NONE) st = lora.setDataShaping(RADIOLIB_SHAPING_0_5);
   if (st == RADIOLIB_ERR_NONE) st = lora.setSyncWord(LORA_SYNC, sizeof LORA_SYNC);
   if (st != RADIOLIB_ERR_NONE) return Serial.printf("lora: radio setup failed (%d)\n", st), false;
+  loraSem = xSemaphoreCreateBinary();
   lora.setPacketReceivedAction(onLoraRx);
+  xTaskCreatePinnedToCore(loraTask, "lora", 4096, nullptr, 2, nullptr, 0);  // loop()'s core, above it
   return loraUp = true;
 }
 
-static void loraStop() {
+static void loraStop() {  // from loop(), which loraTask (same core, higher priority) never interrupts mid-packet
+  loraOn = false;
   if (loraUp) lora.standby();
 }
 
@@ -216,51 +226,64 @@ static bool loraStatus() {
   st.hz = csiHz > 255 ? 255 : csiHz;
   st.dbm = csi.rssi;
   bool ok = lora.transmit((uint8_t*)&st, sizeof st) == RADIOLIB_ERR_NONE;
-  loraRx = false;  // the transmit's own interrupt
+  xSemaphoreTake(loraSem, 0);  // the transmit's own interrupt
   lora.startReceive();
   return ok;
 }
 
-// From loop(), like the SD card (they share SPI): beacons in, 50 Hz frames out.
-static void loraPoll(uint32_t now) {
-  static float sum = 0, lvl = 0, tch = 0;
-  static int n = 0;
-  static uint32_t tFrame = 0, lastPkt = 0, tStatus = 0;
-  static uint32_t tLog = 0, irqs = 0, bad = 0, replies = 0, pkts0 = 0;  // diagnostics, once a second on USB serial
-  static float peak = -200;
-  peak = fmaxf(peak, lora.getRSSI(false));  // energy on the channel, packet or not
-  if (loraRx) {  // beacons that arrived while loop() was busy are lost; the latest is kept
-    loraRx = false;
-    irqs++;
+// Every beacon is read the moment it lands, rather than whenever loop() gets round to it
+// (it spends most of its time drawing, and the radio keeps only the latest packet). Frames
+// go out on a 50 Hz clock, the rate the smoothing and the wobble filters assume, holding
+// the last level when a beacon is missed.
+static void loraTask(void*) {
+  uint32_t tStatus = 0, tQuiet = 0, tStats = 0, tFrame = 0;
+  float lvl = -100, tch = 0;
+  for (;;) {
+    bool irq = xSemaphoreTake(loraSem, pdMS_TO_TICKS(5)) == pdTRUE;
+    if (!loraOn) continue;
+    uint32_t now = millis();
+    if (now - tFrame > 200) tFrame = now - 20;  // after a stall, don't replay it frame by frame
+    for (; now - tFrame >= 20; tFrame += 20)
+      if (now - loraLast < 250) csi.level(lvl, tch);
+    if (now - tStats >= 1000) {  // diagnostics: what the chip itself received, whether or not it reached us
+      uint8_t st[6] = {};
+      loraMod->SPIreadStream(RADIOLIB_SX126X_CMD_GET_STATS, st, 6);
+      for (int i = 0; i < 3; i++) loraChip[i] = st[2 * i] << 8 | st[2 * i + 1];
+      uint8_t zero[6] = {};
+      loraMod->SPIwriteStream(RADIOLIB_SX126X_CMD_RESET_STATS, zero, 6);
+      tStats = now;
+    }
+    if (!irq) {  // nothing landed for 5 ms
+      if (now - loraLast > 2000 && now - tQuiet > 2000) tQuiet = now, lora.startReceive();  // quiet: re-arm
+      continue;
+    }
+    loraIrqs = loraIrqs + 1;
     uint8_t b[sizeof(Status)];
     size_t len = lora.getPacketLength();
     float dbm = lora.getRSSI(true);
-    if (lora.readData(b, sizeof b) == RADIOLIB_ERR_NONE && isPacket<Beacon>(b, len)) {
-      Beacon bc;
-      memcpy(&bc, b, sizeof bc);
-      sum += dbm, n++, loraPkts++, lastPkt = now;
-      tch = bc.touch / 1000.f;
-      // A Status fits in the gap after a beacon only if it goes out right away.
-      if (now - tStatus >= 250 && micros() - loraRxUs < 2000) tStatus = now, replies += loraStatus();
-    } else {
-      bad++;
+    if (lora.readData(b, sizeof b) != RADIOLIB_ERR_NONE || !isPacket<Beacon>(b, len)) {
+      loraBad = loraBad + 1;
+      continue;
     }
+    Beacon bc;
+    memcpy(&bc, b, sizeof bc);
+    loraPkts = loraPkts + 1, loraLast = now, lvl = dbm, tch = bc.touch / 1000.f;
+    if (now - tStatus >= 250) tStatus = now, loraReplies = loraReplies + loraStatus();  // the Heltec listens only until its next beacon
   }
-  if (now - tLog >= 1000) {
-    Serial.printf("lora: irq %lu  beacons %lu  bad %lu  replies %lu  level %d dBm  peak %.0f dBm\n", irqs,
-                  loraPkts - pkts0, bad, replies, csi.rssi, peak);
-    tLog = now, irqs = bad = replies = 0, pkts0 = loraPkts, peak = -200;
-  }
-  if (now - tFrame > 200) tFrame = now - 20;  // after a stall, don't replay it frame by frame
-  for (; now - tFrame >= 20; tFrame += 20) {  // 50 Hz: the rate the smoothing is tuned to
-    if (n) lvl = sum / n, sum = 0, n = 0;
-    if (now - lastPkt < 250) csi.level(lvl, tch);
-  }
-  if (now - lastPkt > 2000) lastPkt = now - 250, lora.startReceive();  // quiet for 2 s: re-arm the receiver
+}
+
+// loop(): diagnostics once a second on USB serial.
+static void loraLog(uint32_t now) {
+  static uint32_t tLog = 0, pkts0 = 0;
+  if (now - tLog < 1000) return;
+  Serial.printf("lora: irq %lu  beacons %lu  bad %lu  replies %lu  level %d dBm  chip rx %u crc %u len %u\n",
+                (unsigned long)loraIrqs, (unsigned long)(loraPkts - pkts0), (unsigned long)loraBad, (unsigned long)loraReplies,
+                csi.rssi, loraChip[0], loraChip[1], loraChip[2]);
+  tLog = now, pkts0 = loraPkts, loraIrqs = loraBad = loraReplies = 0;
 }
 #else
 static void loraStop() {}
-static void loraPoll(uint32_t) {}
+static void loraLog(uint32_t) {}
 #endif
 
 static void radioOff() {  // CSI off, disassociated, no background reconnect hopping channels
@@ -310,6 +333,7 @@ static bool loraStart() {  // false: no cap, or its radio didn't answer
   if (!loraInit()) return false;
   csi = Csi();
   lora.startReceive();
+  loraOn = true;
 #endif
   netMode = NET_LORA;
   netCh = 0;
@@ -1259,7 +1283,7 @@ void loop() {
   static bool wasCal = false;
   serviceKeys();
   uint32_t now = millis();
-  if (netMode == NET_LORA) loraPoll(now);
+  if (netMode == NET_LORA) loraLog(now);
   if (now - tSec >= 1000) {
     tSec = now;
     batt = M5.Power.getBatteryLevel();

@@ -5,9 +5,10 @@
 
 // 50 kbps GFSK, 25 kHz deviation, BT 0.5 shaping: ~100 kHz wide, inside EU 869.7-870 MHz,
 // which allows 5 mW ERP with no duty-cycle limit. +5 dBm into a 2-3 dBi antenna stays under.
-// One channel, nothing hops. The receive filter is wider than the signal (312 vs ~100 kHz)
-// only so the two boards' clocks may sit apart by a few ppm and the packets still land.
-constexpr float LORA_FREQ = 869.85f, LORA_BR = 50, LORA_DEV = 25, LORA_RXBW = 312.0f;
+// One channel, nothing hops. The receive filter is matched to the signal: measured on the
+// boards, 117 kHz caught nearly every beacon, 156 kHz a quarter, 234-312 kHz a tenth; the
+// two TCXOs sit within a few kHz of each other, well inside its margin.
+constexpr float LORA_FREQ = 869.85f, LORA_BR = 50, LORA_DEV = 25, LORA_RXBW = 117.3f;
 constexpr int8_t LORA_POWER = 5;
 // Bits. The receiver waits for min(this, sync word bits) of preamble before it looks for
 // the sync word: a preamble no longer than that leaves no bits for the transmitter's ramp-up
