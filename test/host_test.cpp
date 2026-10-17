@@ -95,8 +95,8 @@ int main(int argc, char** argv) {
   csi.calibrate();
   feed(0, 1.5f, kCalFrames, t);
 
-  // LoRa: a still link stays low; walking (fast fades) lifts MOT, FLX and HI and peaks the
-  // wobble spectrum at its rate; a slow sway lifts LO over HI; touch; calibrated LVL.
+  // LoRa: a still link stays low; quicker movement lifts MOT, FLX and HI within 2 s and
+  // peaks the wobble spectrum at its rate; slow tides lift LO over HI; touch; calibrated LVL.
   {
     static Csi c;
     float tt = 0;
@@ -108,20 +108,24 @@ int main(int argc, char** argv) {
     };
     link(-62, 0, 0, 0, 1500);  // 30 s still
     float sMot = c.src[S_MOT], sFlx = c.src[S_FLX], sHi = c.src[S_HI];
-    link(-62, 3, 0.2f, 0, 400);  // 8 s swaying: 3 dB at 0.2 Hz
-    printf("lora: still MOT %.2f FLX %.2f HI %.2f  sway LO %.2f MID %.2f HI %.2f\n", sMot, sFlx, sHi, c.src[S_LO],
-           c.src[S_MID], c.src[S_HI]);
-    assert(sMot < 0.35f && sHi < 0.35f && c.src[S_LO] > 0.5f && c.src[S_LO] > c.src[S_HI] + 0.3f);
-    int react = -1;  // 5 s walking: 4 dB fades at 3 Hz; HI must follow within half a second
-    for (int f = 0; f < 250; f++)
-      if (link(-62, 4, 3, 0, 1), react < 0 && c.src[S_HI] > 0.5f) react = f;
+    int react = -1;  // 8 s of gestures: 4 dB fades at 0.7 Hz; sources averaged over the last 4 s
+    float mot = 0, flx = 0, hi = 0;
+    for (int f = 0; f < 400; f++) {
+      if (link(-62, 4, 0.7f, 0, 1), react < 0 && c.src[S_HI] > 0.5f) react = f;
+      if (f >= 200) mot += c.src[S_MOT] / 200, flx += c.src[S_FLX] / 200, hi += c.src[S_HI] / 200;
+    }
     int pk = 0;
     for (int k = 1; k < NSC; k++)
       if (c.benv[k] > c.benv[pk]) pk = k;
-    printf("lora: walking MOT %.2f FLX %.2f HI %.2f  peak %.1f Hz\n", c.src[S_MOT], c.src[S_FLX], c.src[S_HI], wobHz(pk));
-    assert(c.src[S_MOT] > sMot + 0.3f && c.src[S_FLX] > sFlx + 0.3f && c.src[S_HI] > 0.6f);
-    assert(fabsf(wobHz(pk) - 3) < 0.5f && c.prof[pk] > 0.8f);  // the walking rate lights up
-    assert(react >= 0 && react * 20 < 500);
+    printf("lora: still MOT %.2f FLX %.2f HI %.2f  moving MOT %.2f FLX %.2f HI %.2f  peak %.1f Hz\n", sMot, sFlx, sHi,
+           mot, flx, hi, wobHz(pk));
+    assert(sMot < 0.35f && sHi < 0.35f && mot > sMot + 0.3f && flx > sFlx + 0.3f && hi > 0.6f);
+    assert(fabsf(wobHz(pk) - 0.7f) < 0.15f && c.prof[pk] > 0.8f);  // its rate lights up
+    assert(react >= 0 && react * 20 < 2000);
+    link(-62, 0, 0, 0, 1500);  // 30 s still, then 30 s of slow tides: 3 dB at 0.06 Hz
+    link(-62, 3, 0.06f, 0, 1500);
+    printf("lora: tides LO %.2f MID %.2f HI %.2f\n", c.src[S_LO], c.src[S_MID], c.src[S_HI]);
+    assert(c.src[S_LO] > 0.5f && c.src[S_LO] > c.src[S_HI] + 0.3f);
     link(-62, 0, 0, 0.3f, 50);
     assert(c.src[S_PHS] > 0.9f);  // TCH
     link(-62, 0, 0, 0, 50);

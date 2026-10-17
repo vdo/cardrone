@@ -19,10 +19,13 @@ static const char* const SRC_NAME[NSRC] = {"MOT", "PHS", "FLX", "RSI", "LO", "MI
 // LoRa mode: same slots, so the matrix and presets carry over (see level()).
 static const char* const SRC_NAME_LORA[NSRC] = {"MOT", "TCH", "FLX", "LVL", "LO", "MID", "HI", "LFO"};
 // LoRa wobble spectrum: one bandpass filter per waterfall column, log-spaced over the rates
-// people move a sub-GHz link at (breathing and swaying ... walking).
-constexpr float kWobLo = 0.15f, kWobHi = 6;  // Hz
+// people move a sub-GHz link at. Measured across a flat, someone moving about shows up
+// mostly as swells of several dB over several seconds; above ~1 Hz there's little but the
+// readings' 1 dB steps flickering. This span (and the tilt below) centred a recording of
+// that on MID and on the middle of the waterfall.
+constexpr float kWobLo = 0.03f, kWobHi = 1.2f;  // Hz
 static inline float wobHz(int k) { return kWobLo * powf(kWobHi / kWobLo, k / (NSC - 1.f)); }
-constexpr float kLoraFloor = 0.5f;  // dB: wobble smaller than this never reads as full scale (RSSI steps are 0.5 dB)
+constexpr float kLoraFloor = 0.5f;  // dB: wobble smaller than this never reads as full scale
 constexpr float kLvlRange = 6;       // dB away from the empty-room level that reads as full LVL
 constexpr float kTouchMin = 0.05f;   // touch rise (fraction of the untouched reading) that can read as full TCH
 
@@ -130,17 +133,17 @@ struct Csi {
   // (dBm), plus its touch reading. No subcarriers and no phase, so the slots refill:
   // MOT, FLX as for CSI, from the level; PHS -> TCH, the touch; RSI -> LVL, the level,
   // or once calibrated its distance from the empty room's. prof becomes the wobble
-  // spectrum, 0.15-6 Hz, and LO/MID/HI its thirds, as for CSI: under 0.5 Hz (settling,
-  // swaying), 0.5-1.75 Hz (gestures), 1.75-6 Hz (walking).
+  // spectrum, 0.03-1.2 Hz, and LO/MID/HI its thirds, as for CSI: 0.03-0.1 Hz (slow tides),
+  // 0.1-0.35 Hz (someone moving about), 0.35-1.2 Hz (gestures, walking).
   void level(float dbm, float touch) {
     // Bandpass (Q 2: broad, but quick), its envelope's rate (~1.5 cycles, at most 2 s), and a
-    // tilt for the picture: motion has far less energy at quick rates, which would stay dark.
+    // gentle tilt for the picture: motion has less energy at quicker rates.
     struct Bp { float b0, a1, a2, e, tilt; };
     static Bp bp[NSC];
     if (!bp[0].b0)
       for (int k = 0; k < NSC; k++) {
         float f = wobHz(k), w = 6.2831853f * f / 50, al = sinf(w) / 4, a0 = 1 + al;
-        bp[k] = {al / a0, -2 * cosf(w) / a0, (1 - al) / a0, 1 - expf(-0.02f / fminf(1.5f / f, 2)), sqrtf(f / kWobLo)};
+        bp[k] = {al / a0, -2 * cosf(w) / a0, (1 - al) / a0, 1 - expf(-0.02f / fminf(1.5f / f, 2)), powf(f / kWobLo, 0.4f)};
       }
     if (frames == 0) fast[0] = slow[0] = prev[0] = lvl = dbm;
     fast[0] += (dbm - fast[0]) * 0.3f;

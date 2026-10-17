@@ -221,15 +221,15 @@ int main(int argc, char** argv) {
   overlay = OV_NONE, calAt = millis() + 3500, shot("cal_countdown");
   calAt = 0, csi.calLeft = kCalFrames * 2 / 5, shot("cal_capture");
 
-  // LoRa mode: a still link, then someone walks through the flat (fades at 2-3 Hz) and,
-  // for the last 2 s, a hand on the Heltec's touch pin.
+  // LoRa mode: a still link, then someone moving about the flat (swells every few seconds)
+  // and, for the last 2 s, a hand on the Heltec's touch pin.
   csi = Csi();
   netMode = NET_LORA, netCh = 0;
-  for (uint32_t t0 = millis(), next = t0; millis() - t0 < 10000;) {
-    float t = (millis() - t0) / 1000.f, walk = t > 6 ? 1 : 0;
+  for (uint32_t t0 = millis(), next = t0; millis() - t0 < 30000;) {
+    float t = (millis() - t0) / 1000.f, walk = t > 10 ? 1 : 0;
     if (millis() >= next) {
-      float v = -64 + walk * (3 * sinf(6.283f * 2.4f * t) + 1.5f * sinf(6.283f * 0.7f * t)) + 0.3f * (rand() / (float)RAND_MAX - 0.5f);
-      csi.level(roundf(v * 2) / 2, t > 8 ? 0.4f : 0);
+      float v = -64 + walk * (3 * sinf(6.283f * 0.2f * t) + 1.5f * sinf(6.283f * 0.6f * t)) + 0.3f * (rand() / (float)RAND_MAX - 0.5f);
+      csi.level(roundf(v), t > 28 ? 0.4f : 0);  // LoRa reports whole dB
       loraPkts += (next / 20) % 2;  // the Heltec sends 25 a second
       next += 20;
     }

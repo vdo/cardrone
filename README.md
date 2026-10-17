@@ -19,7 +19,7 @@ Rendered by the firmware's own drawing code from a simulated room, in which some
 | <img src="docs/cal_countdown.png" width="360" alt="Calibration countdown"> | <img src="docs/cal_capture.png" width="360" alt="Calibration capture"> |
 | **Calibrate** (`e`): 5 s to leave the room… | …then the empty room is captured. Any key cancels. |
 | <img src="docs/lora.png" width="360" alt="LoRa mode"> | |
-| **LoRa mode**: the waterfall becomes the link's wobble spectrum (0.15 Hz left, 6 Hz right, log-spaced): someone walking lights it up. TCH and LVL take PHS's and RSI's places. | |
+| **LoRa mode**: the waterfall becomes the link's wobble spectrum (0.03 Hz left, 1.2 Hz right, log-spaced): someone moving about lights it up. TCH and LVL take PHS's and RSI's places. | |
 
 ## Build / flash
 
@@ -111,9 +111,9 @@ A task woken by the radio reads each one as it lands. LoRa hears ~13 dB further 
 | PHS → **TCH** | the Heltec's touch pins GPIO2–7: a fingertip on a bare header pin; a wire or foil on one senses a hand a few cm away | you, playing it |
 | FLX | packet-to-packet change of the level | walking, fast movement |
 | RSI → **LVL** | the level (−100 to −40 dBm); after `e`, its distance from the empty flat's level (6 dB = full) | someone being there, doors, standing in the path |
-| LO / MID / HI | thirds of the wobble spectrum: 0.15–0.5 Hz, 0.5–1.75 Hz, 1.75–6 Hz | settling and swaying / gestures / walking |
+| LO / MID / HI | thirds of the wobble spectrum: 0.03–0.1 Hz, 0.1–0.35 Hz, 0.35–1.2 Hz | slow tides (10–30 s swells) / someone moving about / gestures, walking |
 
-The waterfall and the ORG engine's partials follow the wobble spectrum instead of the subcarriers: 52 bandpass filters, log-spaced from 0.15 to 6 Hz (where people move a sub-GHz link), quicker columns boosted (×√f) since motion has far less energy at quick rates. Fast columns react in ~0.2 s, the slowest within ~2 s. The MOD PROFILE (options) adds its own glide on top: NORMAL or SHARP feel immediate. Place the two boards so people pass between them; a body in the direct path makes the biggest change.
+The waterfall and the ORG engine's partials follow the wobble spectrum instead of the subcarriers: 52 bandpass filters, log-spaced from 0.03 to 1.2 Hz, quicker columns boosted (×f^0.4) since motion has less energy at quick rates. Tuned on a recording of someone moving across a flat: it centres on MID and the middle of the waterfall, and leaves out the flicker of LoRa's 1 dB level steps above ~1 Hz. The quickest columns react within ~1 s, the slowest over tens of seconds; MOT and FLX react at once. The MOD PROFILE (options) adds its own glide on top: NORMAL or SHARP feel immediate. Place the two boards so people pass between them; a body in the direct path makes the biggest change.
 
 ## Mod sources (from CSI)
 

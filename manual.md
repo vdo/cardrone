@@ -37,7 +37,7 @@ Press **Tab** to cycle through four pages.
 
 ### 1. Waterfall
 
-A picture of the WiFi signal over time. Each column is one of 52 slices of the WiFi channel, and new readings appear at the top and scroll down. Bright means strong, dark means weak. When the room is still, the waterfall forms steady vertical stripes; when people move, the stripes wobble and smear. In LoRa mode it shows something else: how fast the link is wobbling, from slow swells (left, a few seconds per wobble) to quick flicker (right, six a second). A still flat is dark; someone walking lights up the right half.
+A picture of the WiFi signal over time. Each column is one of 52 slices of the WiFi channel, and new readings appear at the top and scroll down. Bright means strong, dark means weak. When the room is still, the waterfall forms steady vertical stripes; when people move, the stripes wobble and smear. In LoRa mode it shows something else: how fast the link is wobbling, from slow tides (left, half a minute per swell) to quick wobble (right, about one a second). A still flat is dark; someone moving about lights up the middle.
 
 On the right are live meters for the eight **mod sources** (explained below). The dim bar behind each meter is a fading memory of its recent peak.
 
@@ -96,7 +96,7 @@ The LoRa link gives one number per packet (how strongly it arrived), not 52 slic
 | **MOT**, **FLX** | As above, from the link's strength. Reaches through walls: the whole flat, not just the room. |
 | **TCH** (touch, in PHS's place) | A finger on one of the Heltec's touch pins (GPIO2 to GPIO7: check the pin labels or Heltec's pin diagram). A wire or a piece of foil on the pin senses a hand from a few cm away, like a small theremin. Rises from 0 to 1 with how much you touch. |
 | **LVL** (level, in RSI's place) | How strong the link is. After calibrating: how far it is from the empty flat's level, so it reads "someone is here". |
-| **LO / MID / HI** | The left, middle and right third of the waterfall: slow wobble (people settling, swaying, doors), medium (gestures), fast (walking). |
+| **LO / MID / HI** | The left, middle and right third of the waterfall: slow tides (10–30 s), someone moving about (3–10 s), gestures and walking (under 3 s). MID is the busiest. |
 
 ### Calibrating
 
