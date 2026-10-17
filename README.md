@@ -18,16 +18,26 @@ Rendered by the firmware's own drawing code from a simulated room, in which some
 | **Options** (`` ` ``) | **Help** (`i`) |
 | <img src="docs/cal_countdown.png" width="360" alt="Calibration countdown"> | <img src="docs/cal_capture.png" width="360" alt="Calibration capture"> |
 | **Calibrate** (`e`): 5 s to leave the room… | …then the empty room is captured. Any key cancels. |
+| <img src="docs/lora.png" width="360" alt="LoRa mode"> | |
+| **LoRa mode**: the waterfall becomes the link's wobble spectrum (0.2 Hz left, 10 Hz right): someone walking lights it up. TCH and LVL take PHS's and RSI's places. | |
 
 ## Build / flash
 
+Two boards, one project ([PlatformIO](https://platformio.org/install/cli)). Plug one in over USB-C, then:
+
 ```sh
-pio run -t upload
+pio run -t upload            # Cardputer ADV
+pio run -e heltec -t upload  # Heltec WiFi LoRa 32 V3 (only needed for LoRa mode)
 ```
 
-The boot screen shows the firmware version from `git describe`: `v0.3` on a release, `v0.3-2-gabc1234` between releases (`-dirty` with uncommitted changes).
+With both plugged in, add `--upload-port` (e.g. `/dev/cu.usbmodem101`, `/dev/ttyUSB0`, `COM5`; `pio device list` shows them). `pio device monitor -e heltec` shows what the Heltec is sending.
 
-Every build also writes `cardrone.bin`, a merged image of bootloader, partitions, boot_app0 and app; a prebuilt one is on the [releases page](https://github.com/vdo/cardrone/releases/latest). To flash it without PlatformIO, open [ESPConnect](https://thelastoutpostworkshop.github.io/ESPConnect/), connect, go to Flash Firmware, load `cardrone.bin`, set offset `0x0`, and flash. If the device doesn't show up, hold G0 while plugging in USB.
+- **Cardputer:** if it doesn't show up, hold G0 while plugging in USB.
+- **Heltec:** screw the 868 MHz antenna on first: transmitting without one can damage the radio. If the upload can't connect, hold PRG, tap RST, let go of PRG. This replaces whatever was on it (Meshtastic, say); [flasher.meshtastic.org](https://flasher.meshtastic.org) puts that back.
+
+Each build also writes a merged image (bootloader, partitions, boot_app0, app): `cardrone.bin` for the Cardputer, `cardrone-heltec.bin` for the Heltec. A prebuilt `cardrone.bin` is on the [releases page](https://github.com/vdo/cardrone/releases/latest). To flash an image without PlatformIO, open [ESPConnect](https://thelastoutpostworkshop.github.io/ESPConnect/), connect, go to Flash Firmware, load the `.bin`, set offset `0x0`, and flash.
+
+The boot screen shows the firmware version from `git describe`: `v0.3` on a release, `v0.3-2-gabc1234` between releases (`-dirty` with uncommitted changes).
 
 ## Network modes
 
@@ -38,8 +48,9 @@ The network screen opens on first boot, and later from `` ` `` → NETWORK. Your
 | AUTO | Hops channels 1–13 for ~3 s, counts CSI frames per transmitter, and locks onto the busiest. Re-surveys after 8 s of silence. No password. | whatever's busiest nearby |
 | JOIN | Associates, then pings the router 50×/s so it keeps answering. Needs the password. | steadiest, ~50 Hz+ |
 | LISTEN | Promiscuous on one network's channel, filtered to that router. No password. | depends on the router's traffic; beacons sent at 1 Mbps yield no CSI |
+| LORA | No WiFi: measures a Heltec's packets with the Cap LoRa-1262 (see below). | ~100 Hz |
 
-The header shows the mode letter, channel and CSI rate, e.g. `A6 48Hz`, then the battery. The drone stays silent until you press `Space` (or a note key). Started before CSI arrives, it hums on the LFO.
+The header shows the mode letter, channel and CSI rate, e.g. `A6 48Hz` (`LR 98Hz` in LoRa mode: packets per second), then the battery. The drone stays silent until you press `Space` (or a note key). Started before CSI arrives, it hums on the LFO.
 
 ## Audio out
 
@@ -76,6 +87,22 @@ Nothing sounds until `Space` (play). On the ADV, plugging headphones into the ja
 | `Enter` | on Params, toggles the selected param's FX; on Matrix, moves to the next column (src → dest → depth); elsewhere play / stop |
 | `Del` | Matrix: clear slot |
 
+## LoRa mode
+
+For when there's no WiFi to read, or to sense the whole flat through walls. Needs the [Cap LoRa-1262](https://docs.m5stack.com/en/cap/Cap_LoRa-1262) on the Cardputer and a [Heltec WiFi LoRa 32 V3](https://wiki.heltec.org/docs/devices/open-source-hardware/esp32-series/lora-32/wifi-lora-32-v3/Pin-diagram-guidance) (868 MHz version) running `src/heltec/beacon.cpp`; both antennas on. Power the Heltec anywhere (USB charger or its battery plug), then `` ` `` → NETWORK → LORA.
+
+The Heltec sends 100 five-byte GFSK packets a second on 869.85 MHz at +5 dBm (EU 869.7–870 MHz: 5 mW ERP, no duty-cycle limit); its LED blinks slowly while it sends. The Cardputer measures the level of each packet, averages them into 50 Hz frames, and refills the same eight slots, so the matrix and presets carry over. There's no shape and no phase on this link, so the slots mean something a little different:
+
+| Slot | LoRa | What moves it |
+|---|---|---|
+| MOT | short vs long average of the level | anyone moving where the signal reaches, through walls |
+| PHS → **TCH** | the Heltec's touch pins GPIO2–7: a fingertip on a bare header pin; a wire or foil on one senses a hand a few cm away | you, playing it |
+| FLX | packet-to-packet change of the level | walking, fast movement |
+| RSI → **LVL** | the level (−100 to −40 dBm); after `e`, its distance from the empty flat's level (6 dB = full) | someone being there, doors, standing in the path |
+| LO / MID / HI | how fast the level wobbles: under 0.5 Hz, 0.5–2 Hz, 2–8 Hz | settling and doors / gestures / walking |
+
+The waterfall and the ORG engine's partials follow the wobble spectrum (0.2–10 Hz) instead of the subcarriers. Place the two boards so people pass between them; a body in the direct path makes the biggest change.
+
 ## Mod sources (from CSI)
 
 | | |
@@ -96,6 +123,7 @@ The LFO shape is saved with presets; the theme is saved on the device.
 
 - `MOD_PROFILES` in `src/dsp.h`: glide times (seconds) for CSI modulation and scale steps behind the SHARP / NORMAL / SMOOTH / SLOW option.
 - `kMinRange` in `src/csi.h`: raise it if a still room still wiggles the mods, lower it if motion reads weakly.
+- LoRa mode, in `src/csi.h`: `kLoraFloor` (dB of wobble that can't read as full scale: raise it if a still link twitches), `kLvlRange` (dB from the empty flat for full LVL), `kTouchMin` (smallest touch that can read as full TCH). On the Heltec (`src/heltec/beacon.cpp`): `kTouchNoise` and `POWER`.
 - The footer's `DSP %` shows synth load on core 1, which audio has to itself (WiFi and the UI share core 0). Keep it well under 100.
 - After a crash, the splash screen says what kind it was: panic, watchdog or brownout.
 - Free heap is printed on USB serial after WiFi comes up.
@@ -112,7 +140,7 @@ To re-render the screenshots after a UI change:
 c++ -std=c++17 -O2 -Isrc -I.pio/libdeps/cardrone/M5GFX/src/lgfx/Fonts test/screens.cpp -lz -o /tmp/screens && /tmp/screens docs
 ```
 
-The host test exercises the scale quantiser, preset JSON (including hostile input), CSI motion response, and renders every engine. With a directory argument it also writes WAVs there.
+The host test exercises the scale quantiser, preset JSON (including hostile input), CSI motion response, the LoRa link's sources, and renders every engine. With a directory argument it also writes WAVs there.
 
 ## License
 

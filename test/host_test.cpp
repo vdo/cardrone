@@ -95,6 +95,43 @@ int main(int argc, char** argv) {
   csi.calibrate();
   feed(0, 1.5f, kCalFrames, t);
 
+  // LoRa: a still link stays low; walking (fast fades) lifts MOT, FLX and HI and peaks the
+  // wobble spectrum at its rate; a slow sway lifts LO over HI; touch; calibrated LVL.
+  {
+    static Csi c;
+    float tt = 0;
+    auto link = [&](float dbm, float amp, float hz, float touch, int n) {
+      for (int f = 0; f < n; f++, tt += 0.02f) {
+        float v = dbm + amp * sinf(6.2831853f * hz * tt) + 0.3f * (rand() / (float)RAND_MAX - 0.5f);
+        c.level(roundf(v * 2) / 2, touch);  // the radio reports 0.5 dB steps
+      }
+    };
+    link(-62, 0, 0, 0, 1500);  // 30 s still
+    float sMot = c.src[S_MOT], sFlx = c.src[S_FLX], sHi = c.src[S_HI];
+    link(-62, 3, 0.2f, 0, 400);  // 8 s swaying: 3 dB at 0.2 Hz
+    printf("lora: still MOT %.2f FLX %.2f HI %.2f  sway LO %.2f MID %.2f HI %.2f\n", sMot, sFlx, sHi, c.src[S_LO],
+           c.src[S_MID], c.src[S_HI]);
+    assert(sMot < 0.35f && sHi < 0.35f && c.src[S_LO] > 0.5f && c.src[S_LO] > c.src[S_HI] + 0.3f);
+    link(-62, 4, 3, 0, 250);  // 5 s walking: 4 dB fades at 3 Hz
+    int pk = 0;
+    for (int k = 1; k < NSC; k++)
+      if (c.prof[k] > c.prof[pk]) pk = k;
+    printf("lora: walking MOT %.2f FLX %.2f HI %.2f  peak %.1f Hz\n", c.src[S_MOT], c.src[S_FLX], c.src[S_HI], (pk + 1) * 50.f / LN);
+    assert(c.src[S_MOT] > sMot + 0.3f && c.src[S_FLX] > sFlx + 0.3f && c.src[S_HI] > 0.6f);
+    assert(fabsf((pk + 1) * 50.f / LN - 3) < 0.5f);
+    link(-62, 0, 0, 0.3f, 50);
+    assert(c.src[S_PHS] > 0.9f);  // TCH
+    link(-62, 0, 0, 0, 50);
+    assert(c.src[S_PHS] < 0.1f);
+    c.calibrate();
+    link(-62, 0, 0, 0, kCalFrames);
+    assert(c.calibrated && fabsf(c.base[0] + 62) < 0.5f && c.src[S_RSSI] < 0.1f);
+    link(-68, 0, 0, 0, 250);  // someone stands in the path: 6 dB down
+    assert(c.src[S_RSSI] > 0.8f);
+    for (float v : c.src) assert(v >= -1 && v <= 1);
+    for (float v : c.prof) assert(v >= 0 && v < 1.01f);
+  }
+
   // A carrier-leak spike beside DC must not show up as a seam: -1/+1 land between their neighbours.
   {
     Csi c;

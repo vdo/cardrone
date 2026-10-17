@@ -10,6 +10,8 @@
 #include "esp_system.h"
 #include "esp_wifi.h"
 #include "ping/ping_sock.h"
+#include <RadioLib.h>
+#include "utility/PI4IOE5V6408_Class.hpp"
 #endif
 #include <functional>
 #ifndef CARDRONE_VERSION  // merge_bin.py stamps `git describe` here
@@ -135,7 +137,8 @@ static void applyVolume() { M5Cardputer.Speaker.setVolume(audioOn ? vol : 0); }
 // JOIN: associate and ping the router at 50 Hz (steadiest rate, needs the password).
 // LISTEN: promiscuous on one AP's channel, no association.
 // AUTO: hop channels 1-13, lock onto whichever transmitter yields the most CSI.
-enum NetMode { NET_OFF, NET_JOIN, NET_LISTEN, NET_AUTO };
+// LORA: no WiFi; the level of a Heltec's packets on 869.85 MHz instead of CSI.
+enum NetMode { NET_OFF, NET_JOIN, NET_LISTEN, NET_AUTO, NET_LORA };
 enum CsiState { CS_HOLD, CS_SURVEY, CS_RUN };
 static volatile uint8_t csiState = CS_HOLD;
 static uint8_t netMode = NET_OFF, netCh = 0, apMac[6];
@@ -164,7 +167,70 @@ static void onCsi(void*, wifi_csi_info_t* info) {  // WiFi task, core 0
   }
 }
 
+// LoRa mode: the Heltec (src/heltec/beacon.cpp) sends 100 small packets a second;
+// the cap on the Cardputer measures how strongly each arrives (Csi::level()).
+constexpr float LORA_FREQ = 869.85f;              // MHz: EU 869.7-870 allows 5 mW with no duty-cycle limit
+static uint8_t LORA_SYNC[] = {0xCA, 0xD0, 0x4E};  // as the Heltec's: only CARDRONE packets count
+static uint32_t loraPkts = 0;
+#ifndef CARDRONE_HOST
+static SX1262 lora = new Module(5, 4, 3, 6, SPI);  // cap: NSS G5, IRQ G4, RST G3, BUSY G6; SPI shared with the SD card
+static bool loraUp = false;
+static volatile bool loraRx = false;
+static void IRAM_ATTR onLoraRx() { loraRx = true; }
+
+static bool loraInit() {
+  if (loraUp) return true;
+  m5::PI4IOE5V6408_Class ioe(0x43, 400000, &m5::In_I2C);  // the cap's IO expander: P0 powers the antenna switch
+  if (!ioe.begin()) return false;  // no cap
+  ioe.setDirection(0, true);
+  ioe.setHighImpedance(0, false);
+  ioe.digitalWrite(0, true);
+  pinMode(12, OUTPUT);
+  digitalWrite(12, HIGH);  // SD card deselected while the radio talks
+  SPI.begin(40, 39, 14, 12);
+  int st = -1;
+  for (float tcxo : {3.0f, 1.8f, 0.f})  // 3.0 V as in M5's examples; fall back if this cap differs
+    if ((st = lora.beginFSK(LORA_FREQ, 50, 25, 156.2f, 0, 16, tcxo, true)) == RADIOLIB_ERR_NONE) break;
+  if (st == RADIOLIB_ERR_NONE) st = lora.setDataShaping(RADIOLIB_SHAPING_0_5);
+  if (st == RADIOLIB_ERR_NONE) st = lora.setSyncWord(LORA_SYNC, sizeof LORA_SYNC);
+  if (st != RADIOLIB_ERR_NONE) return false;
+  lora.setPacketReceivedAction(onLoraRx);
+  return loraUp = true;
+}
+
+static void loraStop() {
+  if (loraUp) lora.standby();
+}
+
+// From loop(), like the SD card (they share SPI): packets in, 50 Hz frames out.
+static void loraPoll(uint32_t now) {
+  static float sum = 0, lvl = 0, tch = 0;
+  static int n = 0;
+  static uint32_t tFrame = 0, lastPkt = 0;
+  if (loraRx) {  // packets that arrived while loop() was busy are lost; the latest is kept
+    loraRx = false;
+    uint8_t b[8];
+    size_t len = lora.getPacketLength();
+    float dbm = lora.getRSSI(true);
+    if (lora.readData(b, sizeof b) == RADIOLIB_ERR_NONE && len == 5 && b[0] == 'C' && b[1] == 'D') {
+      sum += dbm, n++, loraPkts++, lastPkt = now;
+      tch = (b[3] | b[4] << 8) / 1000.f;
+    }
+  }
+  if (now - tFrame > 200) tFrame = now - 20;  // after a stall, don't replay it frame by frame
+  for (; now - tFrame >= 20; tFrame += 20) {  // 50 Hz: the rate the smoothing is tuned to
+    if (n) lvl = sum / n, sum = 0, n = 0;
+    if (now - lastPkt < 250) csi.level(lvl, tch);
+  }
+  if (now - lastPkt > 2000) lastPkt = now - 250, lora.startReceive();  // quiet for 2 s: re-arm the receiver
+}
+#else
+static void loraStop() {}
+static void loraPoll(uint32_t) {}
+#endif
+
 static void radioOff() {  // CSI off, disassociated, no background reconnect hopping channels
+  loraStop();
   csiState = CS_HOLD;
   if (ping) {
     esp_ping_stop(ping);
@@ -202,6 +268,19 @@ static void csiRun(uint8_t mode, const uint8_t* mac, int ch, const char* name) {
   netCh = ch;
   snprintf(netName, sizeof netName, "%s", name);
   csiState = CS_RUN;
+}
+
+static bool loraStart() {  // false: no cap, or its radio didn't answer
+  radioOff();
+#ifndef CARDRONE_HOST
+  if (!loraInit()) return false;
+  csi = Csi();
+  lora.startReceive();
+#endif
+  netMode = NET_LORA;
+  netCh = 0;
+  snprintf(netName, sizeof netName, "HELTEC");
+  return true;
 }
 
 // ── drawing ──────────────────────────────────────────────────────────────────
@@ -277,10 +356,12 @@ static void panel(const char* title, const char* msg, const char* hint) {
 }
 
 static float srcLevel(int s) { return s == S_LFO ? 0.5f + 0.5f * csi.src[s] : csi.src[s]; }
+static const char* srcName(int s) { return (netMode == NET_LORA ? SRC_NAME_LORA : SRC_NAME)[s]; }
 
 static void netDesc(char* s, int cap) {
   static const char* const M[] = {"OFF", "JOIN", "LISTEN", "AUTO"};
   if (netMode == NET_OFF) snprintf(s, cap, "OFF  >");
+  else if (netMode == NET_LORA) snprintf(s, cap, "LORA %.2f MHz  >", LORA_FREQ);
   else snprintf(s, cap, "%s %.10s ch%d  >", M[netMode], netName, netCh);
 }
 
@@ -308,6 +389,7 @@ static void drawHeader() {
   const char tag = "-JLA"[netMode];  // network mode, then channel
   if (csi.calLeft > 0) snprintf(s, sizeof s, "CAL %d%%", 100 - csi.calLeft * 100 / kCalFrames);
   else if (netMode == NET_OFF) snprintf(s, sizeof s, "NO NET");
+  else if (netMode == NET_LORA) snprintf(s, sizeof s, "LR %luHz", (unsigned long)csiHz);
   else if (csiHz) snprintf(s, sizeof s, "%c%d %luHz", tag, netCh, (unsigned long)csiHz);
   else snprintf(s, sizeof s, "%c%d 0Hz", tag, netCh);
   cv.setTextColor(csi.calLeft > 0 || !csiHz ? C_WARN : C_MID);
@@ -326,14 +408,14 @@ static void drawWaterfall() {  // subcarrier ->, time v
   cv.drawRect(3, 14, NSC * 3 + 2, WF_ROWS * 2 + 2, C_DIM);
   if (!csi.frames) {
     cv.setTextColor(C_WARN);
-    cv.drawCenterString("NO CSI - ` for network", 82, 58);
+    cv.drawCenterString(netMode == NET_LORA ? "NO LINK - is the Heltec on?" : "NO CSI - ` for network", 82, 58);
   }
   for (int s = 0; s < NSRC; s++) {  // source meters with a decaying phosphor peak
     int x = 166, y = 16 + s * 12;
     float v = srcLevel(s);
     srcPeak[s] = fmaxf(v, srcPeak[s] - 0.012f);
     cv.setTextColor(C_MID);
-    cv.drawString(SRC_NAME[s], x, y);
+    cv.drawString(srcName(s), x, y);
     cv.fillRect(x + 20, y + 1, 50, 6, C_BAR);
     cv.fillRect(x + 20, y + 1, (int)(srcPeak[s] * 50), 6, C_DIM);
     cv.fillRect(x + 20, y + 1, (int)(v * 50), 6, C_HI);
@@ -355,7 +437,7 @@ static void drawBars() {  // live subcarrier shape, peak ghosts, amber baseline 
     int x = x0 + k * 4, h = 2 + (int)(v * hmax), hp = 2 + (int)(barPeak[k] * hmax);
     cv.fillRect(x, yb - hp, 3, hp - h, C_DIM);
     cv.fillRect(x, yb - h, 3, h, ramp[8 + (int)(v * 23)]);
-    if (csi.calibrated)
+    if (csi.calibrated && netMode != NET_LORA)  // LoRa's baseline is one level, not a shape
       cv.drawFastHLine(x, yb - 2 - (int)(clamp01((csi.base[k] - csi.profLo) / span) * hmax), 3, C_WARN);
   }
   cv.drawFastHLine(x0 - 2, yb + 1, NSC * 4 + 2, C_MID);
@@ -391,7 +473,7 @@ static void drawMatrix() {
     cv.drawString(t, 4, y);
     cv.drawString(">", 60, y);
     cv.setTextColor(col(0));
-    cv.drawString(SRC_NAME[s.src], 14, y);
+    cv.drawString(srcName(s.src), 14, y);
     cv.fillRect(34, y + 1, 20, 6, C_BAR);
     cv.fillRect(34, y + 1, (int)(srcLevel(s.src) * 20), 6, live ? C_HI : C_DIM);
     cv.setTextColor(col(1));
@@ -478,7 +560,7 @@ static void drawCalibration() {
   cv.setTextColor(C_MID);
   cv.drawCenterString(s, W / 2, 72);
   cv.setTextColor(csiHz ? C_MID : C_WARN);
-  cv.drawCenterString(csiHz ? "keep the room empty" : "waiting for CSI...", W / 2, 92);
+  cv.drawCenterString(csiHz ? "keep the room empty" : netMode == NET_LORA ? "waiting for the Heltec..." : "waiting for CSI...", W / 2, 92);
 }
 
 static void drawFooter() {
@@ -671,6 +753,7 @@ static bool resume() {  // restart the last network mode saved in NVS
     p.getBytes("bssid", bssid, 6);
     p.end();
   }
+  if (mode == NET_LORA) return loraStart();
   if (mode == NET_JOIN && *ssid) return join(ssid, pass);
   if (mode == NET_LISTEN && ch) listen(bssid, ch, lssid);
   else if (mode == NET_AUTO) autoSurvey();
@@ -730,14 +813,14 @@ static void pickNetwork() {
   cv.pushSprite(0, 0);
   int n = max(0, min((int)WiFi.scanNetworks(), 16));
   for (;;) {
-    int i = choose("NETWORK", n + 1, [](int i, char* l, char* r) {
-      if (!i) {
-        strcpy(l, "AUTO    survey every channel");
+    int i = choose("NETWORK", n + 2, [](int i, char* l, char* r) {
+      if (i < 2) {
+        strcpy(l, i ? "LORA    a Heltec's packets, no WiFi" : "AUTO    survey every channel");
         return;
       }
-      snprintf(l, 40, "%.24s", WiFi.SSID(i - 1).c_str());
-      snprintf(r, 16, "%sch%d %d", WiFi.encryptionType(i - 1) == WIFI_AUTH_OPEN ? "" : "*", (int)WiFi.channel(i - 1),
-               (int)WiFi.RSSI(i - 1));
+      snprintf(l, 40, "%.24s", WiFi.SSID(i - 2).c_str());
+      snprintf(r, 16, "%sch%d %d", WiFi.encryptionType(i - 2) == WIFI_AUTH_OPEN ? "" : "*", (int)WiFi.channel(i - 2),
+               (int)WiFi.RSSI(i - 2));
     });
     if (i < 0) break;
     if (i == 0) {
@@ -745,7 +828,14 @@ static void pickNetwork() {
       saveNet(NET_AUTO, "", "", nullptr, 0);
       return;
     }
-    if (connectTo(i - 1)) return;
+    if (i == 1) {
+      if (loraStart()) return saveNet(NET_LORA, "", "", nullptr, 0);
+      panel("LORA", "no LoRa cap found", "any key");
+      cv.pushSprite(0, 0);
+      waitKey();
+      continue;
+    }
+    if (connectTo(i - 2)) return;
   }
   resume();  // cancelled: back to the saved mode
 }
@@ -1129,16 +1219,18 @@ void setup() {
 }
 
 void loop() {
-  static uint32_t tSec = 0, tRow = 0, tDraw = 0, lastFrames = 0;
+  static uint32_t tSec = 0, tRow = 0, tDraw = 0, lastFrames = 0, lastPkts = 0;
   static int quietSecs = 0;
   static bool wasCal = false;
   serviceKeys();
   uint32_t now = millis();
+  if (netMode == NET_LORA) loraPoll(now);
   if (now - tSec >= 1000) {
     tSec = now;
     batt = M5.Power.getBatteryLevel();
-    csiHz = csi.frames - lastFrames;
+    csiHz = netMode == NET_LORA ? loraPkts - lastPkts : csi.frames - lastFrames;  // LoRa: packets heard
     lastFrames = csi.frames;
+    lastPkts = loraPkts;
     if (netMode == NET_JOIN && WiFi.status() == WL_CONNECTED)
       if (auto* b = WiFi.BSSID()) memcpy(apMac, b, 6);  // follow roaming
     quietSecs = netMode == NET_AUTO && csiHz < 3 ? quietSecs + 1 : 0;

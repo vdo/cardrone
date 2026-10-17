@@ -20,8 +20,8 @@ Plug in headphones and the speaker switches off by itself.
 
 - `CARDRONE`, or a bright `AUTO` tag while the autopilot plays (see Performing)
 - the engine name, in its own color, so you can tell at a glance which one is playing; then the root note, octave and scale, e.g. `A2 MINOR`
-- the network mode letter and channel: `A` auto, `J` join, `L` listen, so `A6` means AUTO on channel 6
-- how many WiFi measurements arrive per second, e.g. `48Hz` (amber when nothing is coming in)
+- the network mode letter and channel: `A` auto, `J` join, `L` listen, so `A6` means AUTO on channel 6; `LR` in LoRa mode
+- how many WiFi measurements (or LoRa packets) arrive per second, e.g. `48Hz` (amber when nothing is coming in)
 - the battery level (in the warning color below 20%)
 
 **Footer:**
@@ -37,7 +37,7 @@ Press **Tab** to cycle through four pages.
 
 ### 1. Waterfall
 
-A picture of the WiFi signal over time. Each column is one of 52 slices of the WiFi channel, and new readings appear at the top and scroll down. Bright means strong, dark means weak. When the room is still, the waterfall forms steady vertical stripes; when people move, the stripes wobble and smear.
+A picture of the WiFi signal over time. Each column is one of 52 slices of the WiFi channel, and new readings appear at the top and scroll down. Bright means strong, dark means weak. When the room is still, the waterfall forms steady vertical stripes; when people move, the stripes wobble and smear. In LoRa mode it shows something else: how fast the link is wobbling, from slow (left) to quick (right). A still flat is dark; someone walking lights up a band in the middle.
 
 On the right are live meters for the eight **mod sources** (explained below). The dim bar behind each meter is a fading memory of its recent peak.
 
@@ -86,6 +86,17 @@ All room sources run from 0 to 1, and they **adapt to your room**. After a few s
 | **RSI** (signal strength) | How strong the WiFi signal is overall. Changes when you move the Cardputer or step between it and the router. | Slow and steady; good for big, gradual changes. |
 | **LO / MID / HI** | How far the low, middle and top third of the 52 slices have moved from normal. Different movements disturb different slices, so these act like three sensors looking at the room from slightly different angles. | Like MOT, but each reacts to different things. After calibrating, they measure the difference from the empty room. |
 | **LFO** | Not from the room: a slow wave from inside the synth. Shape and speed are in the options. | Regular, predictable movement. |
+
+### In LoRa mode
+
+The LoRa link gives one number per packet (how strongly it arrived), not 52 slices, so two sources change name and LO/MID/HI change meaning. The slots stay in place, so your matrix and presets keep working.
+
+| Source | In LoRa mode |
+|---|---|
+| **MOT**, **FLX** | As above, from the link's strength. Reaches through walls: the whole flat, not just the room. |
+| **TCH** (touch, in PHS's place) | A finger on one of the Heltec's touch pins (GPIO2 to GPIO7: check the pin labels or Heltec's pin diagram). A wire or a piece of foil on the pin senses a hand from a few cm away, like a small theremin. Rises from 0 to 1 with how much you touch. |
+| **LVL** (level, in RSI's place) | How strong the link is. After calibrating: how far it is from the empty flat's level, so it reads "someone is here". |
+| **LO / MID / HI** | How fast the link wobbles: slow (people settling, doors), medium (gestures, swaying), fast (walking). |
 
 ### Calibrating
 
@@ -221,8 +232,21 @@ Open from Options → NETWORK. Your choice is remembered and restored at the nex
 | **AUTO** | Listens on all channels for ~3 seconds and locks onto the busiest WiFi device. If that device goes quiet for 8 seconds, it looks again. | Anywhere, no password. The easiest choice. |
 | **JOIN** | Connects to your network and pings the router 50 times a second, so it always has fresh readings. | At home: steadiest and smoothest. Needs the password. |
 | **LISTEN** | Listens to one network without connecting. | When you can't join but there's a busy network nearby. Depends on how much traffic it has. |
+| **LORA** | No WiFi: listens for a Heltec board's radio packets (see below). | No WiFi around, or to cover a whole flat through walls. Needs the LoRa cap and a Heltec. |
 
 In the list, `;` `.` move, Enter picks, `` ` `` goes back. Networks with `*` need a password: type it, with Del to erase, and press Enter.
+
+### LoRa mode
+
+You need the M5Stack **Cap LoRa-1262** on the Cardputer and a **Heltec WiFi LoRa 32 V3** (868 MHz version) flashed with CARDRONE's Heltec firmware (see the README).
+
+1. Screw both antennas on. The Heltec must never transmit without its antenna.
+2. Power the Heltec: a USB charger, a power bank or its battery plug. Its small LED blinks slowly while it sends.
+3. Put it somewhere across the space, so people walk between it and the Cardputer. Another room works too.
+4. On the Cardputer: `` ` `` → NETWORK → **LORA**. The header shows `LR` and about `100Hz`.
+5. Calibrate (`e`) with nobody around to turn LVL into a presence sensor.
+
+The Heltec sends tiny radio packets 100 times a second on 869.85 MHz, at a power and frequency that are allowed without limits in Europe.
 
 ## Presets
 
@@ -238,6 +262,8 @@ Presets live on the SD card in `/cardrone/preset1.json` to `preset8.json`. A pre
 ## If something seems off
 
 - **Header shows `0Hz` in amber:** no readings are arriving. Try AUTO again, or JOIN your own network.
+- **`LR 0Hz` in LoRa mode:** the Heltec isn't heard. Is it powered and blinking slowly (a fast blink means its radio didn't start)? Is it running CARDRONE's Heltec firmware, with its antenna on? Moving the two closer is a quick test.
+- **"no LoRa cap found":** the cap isn't seated on the Cardputer, or doesn't answer. Power off, reseat it, try again.
 - **Mods barely move:** calibrate, then move more, or raise the depths. The sources adapt to the room, so constant motion eventually reads as "normal".
 - **Mods move too much or feel jumpy:** lower the depths, or pick a slower MOD PROFILE. Two or three slots at 20–30 are usually plenty.
 - **Mods feel sluggish:** pick MOD PROFILE → NORMAL or SHARP.
