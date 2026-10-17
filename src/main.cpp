@@ -300,41 +300,11 @@ static void csiRun(uint8_t mode, const uint8_t* mac, int ch, const char* name) {
   csiState = CS_RUN;
 }
 
-static void panel(const char* title, const char* msg, const char* hint);
-
-#ifndef CARDRONE_HOST
-// The two boards' clocks can sit tens of kHz apart: listen at offsets of -100..+100 kHz,
-// count beacons at each (logged on USB serial), and stay on the best.
-static void loraTune() {
-  panel("LORA", "tuning to the Heltec...", "");
-  cv.pushSprite(0, 0);
-  int best = 0, bestN = 0;
-  for (int k = -5; k <= 5; k++) {
-    lora.setFrequency(LORA_FREQ + k * 0.02f);
-    lora.startReceive();
-    loraRx = false;
-    int n = 0;
-    for (uint32_t t0 = millis(); millis() - t0 < 200; delay(1)) {
-      if (!loraRx) continue;
-      loraRx = false;
-      uint8_t b[sizeof(Status)];
-      size_t len = lora.getPacketLength();
-      n += lora.readData(b, sizeof b) == RADIOLIB_ERR_NONE && isPacket<Beacon>(b, len);
-    }
-    Serial.printf("lora: %+4d kHz  %2d beacons\n", k * 20, n);
-    if (n > bestN || (n == bestN && abs(k) < abs(best))) best = k, bestN = n;
-  }
-  lora.setFrequency(LORA_FREQ + best * 0.02f);
-  Serial.printf("lora: listening at %+d kHz\n", best * 20);
-}
-#endif
-
 static bool loraStart() {  // false: no cap, or its radio didn't answer
   radioOff();
 #ifndef CARDRONE_HOST
   if (!loraInit()) return false;
   csi = Csi();
-  loraTune();
   lora.startReceive();
 #endif
   netMode = NET_LORA;

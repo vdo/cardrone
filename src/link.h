@@ -5,8 +5,8 @@
 
 // 50 kbps GFSK, 25 kHz deviation, BT 0.5 shaping: ~100 kHz wide, inside EU 869.7-870 MHz,
 // which allows 5 mW ERP with no duty-cycle limit. +5 dBm into a 2-3 dBi antenna stays under.
-// The receive filter is wider than the signal (312 vs ~100 kHz) so the two boards' clocks may
-// sit up to ~100 kHz apart; the Cardputer also tunes itself to the Heltec (loraTune()).
+// One channel, nothing hops. The receive filter is wider than the signal (312 vs ~100 kHz)
+// only so the two boards' clocks may sit apart by a few ppm and the packets still land.
 constexpr float LORA_FREQ = 869.85f, LORA_BR = 50, LORA_DEV = 25, LORA_RXBW = 312.0f;
 constexpr int8_t LORA_POWER = 5;
 // Bits. The receiver waits for min(this, sync word bits) of preamble before it looks for
