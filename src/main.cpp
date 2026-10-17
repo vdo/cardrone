@@ -173,7 +173,8 @@ static void onCsi(void*, wifi_csi_info_t* info) {  // WiFi task, core 0
 // times a second with a Status for the Heltec's screen (src/link.h).
 static uint32_t loraPkts = 0;
 #ifndef CARDRONE_HOST
-static SX1262 lora = new Module(5, 4, 3, 6, SPI);  // cap: NSS G5, IRQ G4, RST G3, BUSY G6; SPI shared with the SD card
+static Module* loraMod = new Module(5, 4, 3, 6, SPI);  // cap: NSS G5, IRQ G4, RST G3, BUSY G6; SPI shared with the SD card
+static SX1262 lora = loraMod;
 static bool loraUp = false;
 static volatile bool loraRx = false;
 static volatile uint32_t loraRxUs = 0;  // when it arrived: the Heltec only listens for a few ms after each beacon
@@ -196,6 +197,8 @@ static bool loraInit() {
       break;
     }
   lora.standbyXOSC = true;  // TCXO stays on: TX <-> RX in microseconds (src/link.h)
+  uint8_t fb = RADIOLIB_SX126X_RX_TX_FALLBACK_MODE_STDBY_XOSC;  // and after each packet: begin set RC
+  if (st == RADIOLIB_ERR_NONE) st = loraMod->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_RX_TX_FALLBACK_MODE, &fb, 1);
   if (st == RADIOLIB_ERR_NONE) st = lora.setDataShaping(RADIOLIB_SHAPING_0_5);
   if (st == RADIOLIB_ERR_NONE) st = lora.setSyncWord(LORA_SYNC, sizeof LORA_SYNC);
   if (st != RADIOLIB_ERR_NONE) return Serial.printf("lora: radio setup failed (%d)\n", st), false;

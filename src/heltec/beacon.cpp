@@ -14,7 +14,8 @@ constexpr float kTouchNoise = 0.01f;  // touch rise ignored as noise (fraction o
 static const uint8_t TOUCH[] = {2, 3, 4, 5, 6, 7};  // free touch pins: 1 reads the battery, 8-14 drive the radio
 constexpr int NT = sizeof TOUCH;
 
-static SX1262 radio = new Module(8, 14, 12, 13);  // NSS, DIO1, RST, BUSY; SPI on the board's default pins
+static Module* mod = new Module(8, 14, 12, 13);  // NSS, DIO1, RST, BUSY; SPI on the board's default pins
+static SX1262 radio = mod;
 static U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, RST_OLED, SCL_OLED, SDA_OLED);
 static volatile bool rxDone = false;
 static void IRAM_ATTR onRx() { rxDone = true; }
@@ -101,6 +102,8 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   int st = radio.beginFSK(LORA_FREQ, LORA_BR, LORA_DEV, LORA_RXBW, LORA_POWER, LORA_PREAMBLE, 1.8f);  // the V3's TCXO runs at 1.8 V
   radio.standbyXOSC = true;  // TCXO stays on: TX <-> RX in microseconds (src/link.h)
+  uint8_t fb = RADIOLIB_SX126X_RX_TX_FALLBACK_MODE_STDBY_XOSC;  // and after each packet: begin set RC
+  if (st == RADIOLIB_ERR_NONE) st = mod->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_RX_TX_FALLBACK_MODE, &fb, 1);
   if (st == RADIOLIB_ERR_NONE) st = radio.setDataShaping(RADIOLIB_SHAPING_0_5);
   if (st == RADIOLIB_ERR_NONE) st = radio.setSyncWord(LORA_SYNC, sizeof LORA_SYNC);
   while (st != RADIOLIB_ERR_NONE) {  // fast blink: no radio

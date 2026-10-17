@@ -13,7 +13,8 @@ constexpr int8_t LORA_POWER = 5;
 // the sync word: a preamble no longer than that leaves no bits for the transmitter's ramp-up
 // or a receiver that has only just switched to RX (the Heltec, after each beacon).
 constexpr uint16_t LORA_PREAMBLE = 64;
-// After begin, both radios set standbyXOSC: from RadioLib's default RC standby the TCXO is
+// After begin, both radios set standbyXOSC and send SetRxTxFallbackMode(STDBY_XOSC): from
+// RadioLib's default RC standby (also where the chip lands after each packet) the TCXO is
 // off, and every switch to TX or RX waits ~5 ms for it, longer than the gap after a beacon.
 static uint8_t LORA_SYNC[] = {0xCA, 0xD0, 0x4E};  // only CARDRONE packets count
 
