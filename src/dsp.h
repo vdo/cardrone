@@ -481,7 +481,7 @@ DSP_IRAM void Synth::block(int16_t* out, int n, float* src, const float* prof) {
 
   float fc = fminf(30 * exp2f(eff[P_CUTOFF] * 9.2f), SR * 0.42f);
   cut += (fc - cut) * (1 - expf(-0.357f * bs));  // 0.3 per 512 samples
-  float g = tanf(PI_F * cut / SR), k = 2 - 1.9f * eff[P_RESO];
+  float g = tanf(PI_F * cut / SR), k = 2 * exp2f(-4.32f * eff[P_RESO]);  // Q 0.5-10, even in dB: ~2.6 dB a tenth
   float a1 = 1 / (1 + g * (g + k)), a2 = g * a1, a3 = g * a2;
   float ng = eff[P_NOISE] * eff[P_NOISE] * 0.6f, level = eff[P_LEVEL];
   float dg = 1 + eff[P_DRIVE] * 8, dm = 1 - eff[P_DRIVE] * 0.45f;

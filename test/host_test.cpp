@@ -241,6 +241,29 @@ int main(int argc, char** argv) {
     assert(h2 > -30);
   }
 
+  // RESO: the filter's peak should grow evenly across the knob, not only in its last tenth.
+  {
+    float src0[NSRC] = {}, flat[NSC];
+    for (float& f : flat) f = 0.5f;
+    auto peak = [&](float reso) {  // the 8th harmonic, at the cutoff, vs the fundamental, dB
+      syn.pt = DEFAULT_PATCH;
+      syn.pt.engine = E_SAW, syn.pt.voices = 1, syn.pt.fx = 0;  // SPREAD 0: seven saws in unison, A2 = 110 Hz
+      syn.pt.p[P_SPREAD] = 0, syn.pt.p[P_NOISE] = 0, syn.pt.p[P_RESO] = reso;
+      syn.pt.p[P_CUTOFF] = log2f(880 / 30.f) / 9.2f;  // the cutoff on 880 Hz
+      for (auto& s : syn.pt.mod) s.depth = 0;
+      for (int i = 0; i + 512 <= SR * 4; i += 512) syn.render(pcm + i, 512, src0, flat);
+      auto mag = [&](double hz) {
+        double re = 0, im = 0;
+        for (int i = 0; i < SR; i++) re += pcm[SR * 3 + i] * cos(2 * M_PI * hz * i / SR), im += pcm[SR * 3 + i] * sin(2 * M_PI * hz * i / SR);
+        return sqrt(re * re + im * im);
+      };
+      return 20 * log10(mag(syn.freq * 8) / mag(syn.freq));
+    };
+    double r0 = peak(0), r3 = peak(0.3f), r5 = peak(0.5f), r7 = peak(0.7f), r10 = peak(1);
+    printf("reso: 8th harmonic at the cutoff, re 0: 0.3 %+.1f  0.5 %+.1f  0.7 %+.1f  1.0 %+.1f dB\n", r3 - r0, r5 - r0, r7 - r0, r10 - r0);
+    assert(r3 - r0 > 4 && r5 - r0 > 10 && r7 - r0 > 15);
+  }
+
   // FOLD: a sine at SPREAD 0; SPREAD folds in odd harmonics, TIMBRE skews the folds into even ones.
   {
     for (float u = -9; u < 9; u += 0.37f)  // ADAA needs foldF to be foldT's antiderivative
