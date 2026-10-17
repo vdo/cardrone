@@ -118,6 +118,7 @@ struct M5Canvas {
   void drawCenterString(const char* s, int x, int y) { drawString(s, x - textWidth(s) / 2, y); }
   void drawRightString(const char* s, int x, int y) { drawString(s, x - textWidth(s), y); }
 };
+struct M5Cfg { int serial_baudrate; };
 struct KeysState { bool tab, enter, del, fn; std::vector<char> word; };
 static struct {
   struct { void setRotation(int) {} } Display;
@@ -131,9 +132,9 @@ static struct {
   } Speaker;
   struct { bool isChange() { return false; } bool isPressed() { return false; } KeysState keysState() { return {}; } } Keyboard;
   void update() {}
-  void begin(int, bool) {}
+  void begin(M5Cfg, bool) {}
 } M5Cardputer;
-static struct { int config() { return 0; } struct { int getBatteryLevel() { return 78; } } Power; } M5;
+static struct { M5Cfg config() { return {}; } struct { int getBatteryLevel() { return 78; } } Power; } M5;
 
 #define CARDRONE_HOST
 #include "../src/main.cpp"
