@@ -138,7 +138,10 @@ static void audioTask(void*) {
   }
 }
 
-static void applyVolume() { M5Cardputer.Speaker.setVolume(audioOn ? vol : 0); }
+static void applyVolume() {  // the speaker stays at unity: its own volume steps click, the synth glides
+  M5Cardputer.Speaker.setVolume(VOL_MAX);
+  syn.volume = audioOn ? (float)vol * vol / (VOL_MAX * VOL_MAX) : 0;  // squared, as M5Unified's volume was
+}
 
 // ── network modes + CSI capture ──────────────────────────────────────────────
 // JOIN: associate and ping the router at 50 Hz (steadiest rate, needs the password).

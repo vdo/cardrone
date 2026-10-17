@@ -211,6 +211,15 @@ int main(int argc, char** argv) {
     syn.duck = false;
     rms(600);
     assert(rms(50) > 0.05);
+    // Volume glides: a step lands over ~30 ms (at once, it clicks), then settles at the new gain.
+    double full = rms(50);
+    syn.volume = 0.25f;
+    double first = rms(1);
+    rms(50);
+    double quarter = rms(50);
+    syn.volume = 1;
+    printf("volume step to 0.25: first block %.2f, settled %.2f of full\n", first / full, quarter / full);
+    assert(first > 0.5 * full && fabs(quarter / full - 0.25) < 0.05);
   }
 
   // Analog drive: a pushed pure tone grows a 2nd harmonic (tube-like bias), not just odd ones.

@@ -205,6 +205,7 @@ struct Synth {
   bool freeze = false;  // hold the room's mods (and ORG's partials) where they are; the LFO keeps going
   bool duck = false;    // fade the output down (slowly); false swells it back
   float room = 1;       // room amount, 0..2: scales the room's sources in the matrix (not the LFO)
+  float volume = 1;     // output gain 0..1 (the UI's volume and mute), glided here: a step would click
 
   Synth() {
     for (int i = 0; i <= 1024; i++) SINT[i] = sinf(2 * PI_F * i / 1024);
@@ -250,7 +251,7 @@ struct Synth {
   float baseN = -1;  // root + octave as a gliding MIDI note (-1: not started)
   float baseS[NPARAM], modS[NSRC] = {}, lfoPh = 0, lfoA = 0, lfoB = 0, semis = 0, fade = 0, cut = 1000, ic1 = 0, ic2 = 0;
   int engine = -1, curVoices = 3, curInterval = 0;
-  float outGain = 1;
+  float outGain = 1, volG = 1;  // fade (held q), volume as glided
   uint8_t fxOn = 0;
   uint32_t rng = 22222;
   float crushWob = 0, ringPh = 0;  // crusher: wandering bit depth
@@ -345,10 +346,11 @@ DSP_IRAM void Synth::block(int16_t* out, int n, float* src, const float* prof) {
     curInterval = P.interval;
   }
   float fadeTo = same ? 1.f : 0.f;
-  // Slow fade (held q): ramp the output gain sample by sample.
-  float g0 = outGain;
+  // Slow fade (held q) and volume (~30 ms glide): ramp the output gain sample by sample.
+  float g0 = outGain * volG;
   outGain += ((duck ? 0.f : 1.f) - outGain) * fminf(n / (FADE_TAU * SR), 1.f);
-  float gStep = (outGain - g0) / n;
+  volG += (volume - volG) * fminf(n / (0.03f * SR), 1.f);
+  float gStep = (outGain * volG - g0) / n;
 
   // An FX switched on starts clean instead of replaying a stale buffer.
   uint8_t fx = P.fx, on = fx & ~fxOn;
