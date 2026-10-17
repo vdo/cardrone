@@ -246,7 +246,15 @@ You need the M5Stack **Cap LoRa-1262** on the Cardputer and a **Heltec WiFi LoRa
 4. On the Cardputer: `` ` `` → NETWORK → **LORA**. The header shows `LR` and about `100Hz`.
 5. Calibrate (`e`) with nobody around to turn LVL into a presence sensor.
 
-The Heltec sends tiny radio packets 100 times a second on 869.85 MHz, at a power and frequency that are allowed without limits in Europe.
+The Heltec sends tiny radio packets 100 times a second on 869.85 MHz, at a power and frequency that are allowed without limits in Europe. The Cardputer answers a few times a second, so the Heltec's little screen can show both ends:
+
+- the top lines: how many packets it sends, and whether the Cardputer hears them (`HEARD 97/s -62dBm`: packets per second and how strong; `BACK`: how strong the Cardputer's answers arrive). `WAITING` means no answer yet: is the Cardputer on LORA?
+- the engine, note and scale the drone is playing, and `PLAY` / `STOP`, `AUTO`, `FRZ`, `CAL`
+- the eight mod sources as bars, so you can watch the room from where the Heltec stands
+- each touch pin's bar (2 to 7): touch one to find it
+- the battery voltage, the chip's temperature and how long it has been running
+
+Handy for placing it: walk around with the Heltec and watch `HEARD` and the bars.
 
 ## Presets
 
@@ -263,6 +271,7 @@ Presets live on the SD card in `/cardrone/preset1.json` to `preset8.json`. A pre
 
 - **Header shows `0Hz` in amber:** no readings are arriving. Try AUTO again, or JOIN your own network.
 - **`LR 0Hz` in LoRa mode:** the Heltec isn't heard. Is it powered and blinking slowly (a fast blink means its radio didn't start)? Is it running CARDRONE's Heltec firmware, with its antenna on? Moving the two closer is a quick test.
+- **The Heltec says `WAITING` but the Cardputer shows a rate:** the Cardputer hears it, but its answers don't arrive. Check the cap's antenna. The drone works either way; only the Heltec's screen misses out.
 - **"no LoRa cap found":** the cap isn't seated on the Cardputer, or doesn't answer. Power off, reseat it, try again.
 - **Mods barely move:** calibrate, then move more, or raise the depths. The sources adapt to the room, so constant motion eventually reads as "normal".
 - **Mods move too much or feel jumpy:** lower the depths, or pick a slower MOD PROFILE. Two or three slots at 20–30 are usually plenty.

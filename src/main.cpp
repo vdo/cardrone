@@ -19,6 +19,7 @@
 #endif
 #include "csi.h"
 #include "dsp.h"
+#include "link.h"
 
 constexpr int W = 240, H = 135, BUF = 512, WF_ROWS = 48;
 constexpr int HIST = 56;  // sparkline ends at x=136, before the DSP/VOL readout
@@ -167,16 +168,16 @@ static void onCsi(void*, wifi_csi_info_t* info) {  // WiFi task, core 0
   }
 }
 
-// LoRa mode: the Heltec (src/heltec/beacon.cpp) sends 100 small packets a second;
-// the cap on the Cardputer measures how strongly each arrives (Csi::level()).
-constexpr float LORA_FREQ = 869.85f;              // MHz: EU 869.7-870 allows 5 mW with no duty-cycle limit
-static uint8_t LORA_SYNC[] = {0xCA, 0xD0, 0x4E};  // as the Heltec's: only CARDRONE packets count
+// LoRa mode: the Heltec (src/heltec/beacon.cpp) sends 100 beacons a second; the cap
+// on the Cardputer measures how strongly each arrives (Csi::level()) and answers a few
+// times a second with a Status for the Heltec's screen (src/link.h).
 static uint32_t loraPkts = 0;
 #ifndef CARDRONE_HOST
 static SX1262 lora = new Module(5, 4, 3, 6, SPI);  // cap: NSS G5, IRQ G4, RST G3, BUSY G6; SPI shared with the SD card
 static bool loraUp = false;
 static volatile bool loraRx = false;
-static void IRAM_ATTR onLoraRx() { loraRx = true; }
+static volatile uint32_t loraRxUs = 0;  // when it arrived: the Heltec only listens for a few ms after each beacon
+static void IRAM_ATTR onLoraRx() { loraRx = true, loraRxUs = micros(); }
 
 static bool loraInit() {
   if (loraUp) return true;
@@ -190,7 +191,7 @@ static bool loraInit() {
   SPI.begin(40, 39, 14, 12);
   int st = -1;
   for (float tcxo : {3.0f, 1.8f, 0.f})  // 3.0 V as in M5's examples; fall back if this cap differs
-    if ((st = lora.beginFSK(LORA_FREQ, 50, 25, 156.2f, 0, 16, tcxo, true)) == RADIOLIB_ERR_NONE) break;
+    if ((st = lora.beginFSK(LORA_FREQ, LORA_BR, LORA_DEV, LORA_RXBW, LORA_POWER, 16, tcxo, true)) == RADIOLIB_ERR_NONE) break;
   if (st == RADIOLIB_ERR_NONE) st = lora.setDataShaping(RADIOLIB_SHAPING_0_5);
   if (st == RADIOLIB_ERR_NONE) st = lora.setSyncWord(LORA_SYNC, sizeof LORA_SYNC);
   if (st != RADIOLIB_ERR_NONE) return false;
@@ -202,19 +203,38 @@ static void loraStop() {
   if (loraUp) lora.standby();
 }
 
-// From loop(), like the SD card (they share SPI): packets in, 50 Hz frames out.
+// What the Heltec's screen shows.
+static void loraStatus() {
+  Status st;
+  const Patch& P = syn.pt;
+  st.hz = csiHz > 255 ? 255 : csiHz;
+  st.dbm = csi.rssi;
+  for (int s = 0; s < NSRC; s++) st.src[s] = (uint8_t)(clamp01(s == S_LFO ? 0.5f + 0.5f * csi.src[s] : csi.src[s]) * 255);
+  st.engine = P.engine, st.root = P.root, st.octave = P.octave, st.scale = P.scale;
+  st.flags = (playing ? ST_PLAYING : 0) | (csi.calibrated ? ST_CALIBRATED : 0) | (autoOn ? ST_AUTO : 0) |
+             (drift ? ST_DRIFT : 0) | (syn.freeze ? ST_FREEZE : 0);
+  lora.transmit((uint8_t*)&st, sizeof st);
+  loraRx = false;  // the transmit's own interrupt
+  lora.startReceive();
+}
+
+// From loop(), like the SD card (they share SPI): beacons in, 50 Hz frames out.
 static void loraPoll(uint32_t now) {
   static float sum = 0, lvl = 0, tch = 0;
   static int n = 0;
-  static uint32_t tFrame = 0, lastPkt = 0;
-  if (loraRx) {  // packets that arrived while loop() was busy are lost; the latest is kept
+  static uint32_t tFrame = 0, lastPkt = 0, tStatus = 0;
+  if (loraRx) {  // beacons that arrived while loop() was busy are lost; the latest is kept
     loraRx = false;
-    uint8_t b[8];
+    uint8_t b[sizeof(Status)];
     size_t len = lora.getPacketLength();
     float dbm = lora.getRSSI(true);
-    if (lora.readData(b, sizeof b) == RADIOLIB_ERR_NONE && len == 5 && b[0] == 'C' && b[1] == 'D') {
+    if (lora.readData(b, sizeof b) == RADIOLIB_ERR_NONE && isPacket<Beacon>(b, len)) {
+      Beacon bc;
+      memcpy(&bc, b, sizeof bc);
       sum += dbm, n++, loraPkts++, lastPkt = now;
-      tch = (b[3] | b[4] << 8) / 1000.f;
+      tch = bc.touch / 1000.f;
+      // A Status fits in the gap after a beacon only if it goes out right away.
+      if (now - tStatus >= 250 && micros() - loraRxUs < 1500) tStatus = now, loraStatus();
     }
   }
   if (now - tFrame > 200) tFrame = now - 20;  // after a stall, don't replay it frame by frame
