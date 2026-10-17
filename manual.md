@@ -28,7 +28,7 @@ Plug in headphones and the speaker switches off by itself.
 
 - a small `MOT` graph of recent motion
 - `DSP %`: how hard the synth is working (keep it under ~80%)
-- the volume, or `MUTED`, or `STOPPED`; `BT` in front while a MIDI device is connected over Bluetooth
+- the volume, or `MUTED`, or `STOPPED`
 - hints for the current page, and short messages such as `RANDOMIZED` or `BASELINE SET`
 
 ## Pages
@@ -47,7 +47,7 @@ The same 52 slices as a live bar graph, so you can see the current "shape" of th
 
 ### 3. Params
 
-The sixteen sound controls. Each has a bar for its setting and a bright tick showing where it actually is right now, after the room's modulation. A name in amber is held by a MIDI controller (see MIDI).
+The sixteen sound controls. Each has a bar for its setting and a bright tick showing where it actually is right now, after the room's modulation.
 
 - `;` `.` select a param
 - `,` `/` turn it down or up (hold to sweep)
@@ -208,7 +208,6 @@ Move with `;` `.`, change with `,` `/` or Enter, close with `` ` ``.
 | LFO RATE | from 0.02 Hz (one cycle per ~50 seconds) to about 5 Hz |
 | THEME | green, yellow, red or blue phosphor, or B&W (grey, with warnings, calibration ticks and engine tags still in color); remembered after power-off |
 | NETWORK | the network screen (see below) |
-| BLE MIDI | Bluetooth MIDI on or off (see below). Enter switches it and restarts the Cardputer, since Bluetooth and WiFi share one radio. Remembered after power-off. |
 | CALIBRATE | record the empty room, after a 5 s countdown to leave |
 
 The bottom line shows the lowest free memory since power-on, which helps with tracking down crashes.
@@ -224,36 +223,6 @@ Open from Options → NETWORK. Your choice is remembered and restored at the nex
 | **LISTEN** | Listens to one network without connecting. | When you can't join but there's a busy network nearby. Depends on how much traffic it has. |
 
 In the list, `;` `.` move, Enter picks, `` ` `` goes back. Networks with `*` need a password: type it, with Del to erase, and press Enter.
-
-## MIDI over Bluetooth
-
-Switch on Options → BLE MIDI (the Cardputer restarts). It then shows up as a Bluetooth MIDI device called **CARDRONE**:
-
-- **Mac:** Audio MIDI Setup → Window → Show MIDI Studio → the Bluetooth button → Connect next to CARDRONE. It then appears as a MIDI output in your DAW.
-- **iPhone / iPad:** connect from inside a MIDI app that has a Bluetooth MIDI page (most controller and DAW apps do).
-- **Android, Windows, BLE MIDI controllers:** pair from the app or the controller; anything that speaks standard BLE MIDI works.
-
-While connected, the footer shows `BT`. Any MIDI channel works.
-
-- **Notes** set the drone's root and octave, like the note keys (it glides there). Note-offs are ignored: the drone holds.
-- **Knobs (CCs)** set a param. The first time a knob touches a param, that param **belongs to MIDI**: the room's modulation lets go of it (gently), its name turns amber on the Params page, and its matrix slots go dim. Your knob is now the only thing moving it.
-- **Pitch bend** moves PITCH, up to an octave either way through the scale, and takes it over like a knob.
-- **CC 121** (*reset all controllers*) hands every param back to the room. So does disconnecting.
-
-| CC | Param | | CC | Param |
-|---|---|---|---|---|
-| 20 | PITCH | | 28 | DRIVE |
-| 21 | CUTOFF | | 29 | CRUSH |
-| 22 | RESO | | 30 | RING |
-| 23 | TIMBRE | | 31 | CHORUS |
-| 24 | SPREAD | | 32 | D.TIME |
-| 25 | NOISE | | 33 | D.FB |
-| 26 | LFO | | 34 | REVERB |
-| 27 | LEVEL | | 35 | SHIMMR |
-
-The usual General MIDI numbers work too: 1 (mod wheel) TIMBRE, 7 (volume) LEVEL, 71 RESO, 74 CUTOFF, 91 REVERB, 93 CHORUS. An effect that is switched off stays off: turn it on with Fn + its number.
-
-Bluetooth shares the radio with WiFi, so the WiFi readings arrive a little less often. In JOIN mode the WiFi also has to nap between the router's beacons, which costs the most; AUTO and LISTEN are less affected. If you don't use MIDI, leave it off.
 
 ## Presets
 
@@ -273,5 +242,4 @@ Presets live on the SD card in `/cardrone/preset1.json` to `preset8.json`. A pre
 - **Mods move too much or feel jumpy:** lower the depths, or pick a slower MOD PROFILE. Two or three slots at 20–30 are usually plenty.
 - **Mods feel sluggish:** pick MOD PROFILE → NORMAL or SHARP.
 - **Crackles:** check `DSP %` in the footer. If it's near 100, switch off an effect.
-- **Fewer WiFi readings since switching on BLE MIDI:** expected, most of all in JOIN mode (see MIDI over Bluetooth). Switch it off when you don't need it.
 - **After a crash**, the start screen says what happened (panic, watchdog or brownout). Note it down, with the free-memory number from the options page.

@@ -196,7 +196,6 @@ struct Synth {
   uint8_t profile = 2;  // MOD_PROFILES index, SMOOTH
   bool freeze = false;  // hold the room's mods (and ORG's partials) where they are; the LFO keeps going
   bool duck = false;    // fade the output down (slowly); false swells it back
-  uint16_t midiOwn = 0;  // params a MIDI controller has taken over (bit = param): the matrix lets go of them
 
   Synth() {
     for (int i = 0; i <= 1024; i++) SINT[i] = sinf(2 * PI_F * i / 1024);
@@ -316,13 +315,12 @@ DSP_IRAM void Synth::block(int16_t* out, int n, float* src, const float* prof) {
     if (s == S_LFO || !freeze) modS[s] += (src[s] - modS[s]) * (s == S_LFO ? lfoGlide : glide);
   for (int i = 0; i < NPARAM; i++) eff[i] = baseS[i] += (P.p[i] - baseS[i]) * pg;
   // The matrix glides too: depths ramp, and a slot re-routed to another source or
-  // param fades out on the old route before fading in on the new one (or out
-  // for good, once MIDI holds its param).
+  // param fades out on the old route before fading in on the new one.
   for (int k = 0; k < NSLOT; k++) {
     const Slot& s = P.mod[k];
     Slot& r = route[k];
-    bool moved = s.src != r.src || s.dst != r.dst, held = r.dst < NPARAM && (midiOwn >> r.dst & 1);
-    routeD[k] += ((moved || held ? 0 : s.depth) - routeD[k]) * pg;
+    bool moved = s.src != r.src || s.dst != r.dst;
+    routeD[k] += ((moved ? 0 : s.depth) - routeD[k]) * pg;
     if (moved && fabsf(routeD[k]) < 0.5f) r.src = s.src, r.dst = s.dst;
     if (r.src < NSRC && r.dst < NPARAM) eff[r.dst] += modS[r.src] * routeD[k] * 0.01f;
   }
